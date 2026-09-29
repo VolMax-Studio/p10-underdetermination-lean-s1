@@ -1,0 +1,73 @@
+# Implementation binding — P10 Underdetermination Profile → Lean
+
+**Normative source:** `P10_Underdetermination_Profile_v0.1.1.md`
+(snapshot: `profile/normative/P10_Underdetermination_Profile_v0.1.1.md`, provenance in `profile/SOURCE.md`)
+
+**Normative profile SHA-256** (computed from the file, `sha256sum`):
+`b92c0d689b9f16f2184ba2addb8653ed881595cc3a0117c62cadadf5c6dc6558`
+
+**Implementation status:** self-reviewed / **not independently validated** / not ratified. No human
+ratification, tag or release exists for this repository.
+
+## Authority
+
+* **Normative authority = the ratified profile/spec.** This file and the Lean sources do not amend it.
+* **The Lean implementation is an executable formal realization**, not a retroactive normative
+  definition. If Lean and the profile disagree, the profile wins and the disagreement is a bug here.
+* **Model adequacy is not established by a Lean certificate.** A certificate shows underdetermination
+  relative to the committed profile semantics; it does not show that `Wπ` covers reality, that
+  `Compatibleπ` models reality, that evidence is truthful, or that a runtime used the profile.
+
+## Version note (mismatch report)
+
+The task text named `P10_Underdetermination_Profile_v0.1.0.md`; only **v0.1.1** exists in the profile repository
+(commit `3c20df23781831867834e9bbaaf321acd6a71272`). Definitions were read from v0.1.1. Its §10 states that it
+made no change to the mathematical definitions of `Determinateπ`, `Underdeterminedπ`,
+`FormallyUnderdeterminationCapable`; no v0.1.0 file was available to confirm this independently.
+**No semantic mismatch between the task's propositions and the profile text was found.**
+
+## Definition table (all files: `lean` sources at the digests shown)
+
+| Ratified profile definition | Profile section | Exact formal expression (profile) | Lean symbol | Lean source file | source SHA-256 | status |
+|---|---|---|---|---|---|---|
+| `Wπ`, `Eπ` (membership) | §2.1, §2.2 | `w ∈ Wπ`, `e ∈ Eπ` | `P10.Profile.inW`, `P10.Profile.inE` (membership predicates) | `P10/Core.lean` | `67e5d850df429f519afa944e77096ede252126bdb6b76585a11493ea7241e23f` | self-reviewed |
+| `Compatibleπ : Evidence → World → Prop` | §2.1 | `Compatibleπ(e, w)` | `P10.Compatible` (`P10.Profile.compatible`) | `P10/Core.lean` | same | self-reviewed |
+| `Evalπ : Claim → World → Value` | §2.1 | `Evalπ(c, w)` | `P10.Eval` (`P10.Profile.eval`) | `P10/Core.lean` | same | self-reviewed |
+| `NonemptyCompatibleπ(e)` | §2.1 | `∃ w ∈ Wπ, Compatibleπ(e, w)` | `P10.NonemptyCompatible` | `P10/Core.lean` | same | self-reviewed |
+| `Determinateπ(e,c)` | §2.1 | `NonemptyCompatibleπ(e) ∧ ∀ w₀ w₁ ∈ Wπ, Compatibleπ(e,w₀) ∧ Compatibleπ(e,w₁) → Evalπ(c,w₀) = Evalπ(c,w₁)` | `P10.Determinate` | `P10/Core.lean` | same | self-reviewed |
+| `Underdeterminedπ(e,c)` | §2.1 | `∃ w₀ w₁ ∈ Wπ, Compatibleπ(e,w₀) ∧ Compatibleπ(e,w₁) ∧ Evalπ(c,w₀) ≠ Evalπ(c,w₁)` | `P10.Underdetermined` | `P10/Core.lean` | same | self-reviewed |
+| `ProfileAdmissible(π,c)` | §2.1 | `∃ eᵈ ∈ Eπ, Determinateπ(eᵈ,c)` | `P10.ProfileAdmissible` | `P10/Core.lean` | same | self-reviewed |
+| `FormallyUnderdeterminationCapable(π,c)` | §2.1 | `∃ eᵘ eᵈ ∈ Eπ, Underdeterminedπ(eᵘ,c) ∧ Determinateπ(eᵈ,c)` | `P10.FormallyUnderdeterminationCapable` | `P10/Core.lean` | same | self-reviewed |
+| note: `FUC → ProfileAdmissible` | §2.1 note | `FormallyUnderdeterminationCapable(π,c) → ProfileAdmissible(π,c)` | `P10.FormallyUnderdeterminationCapable.profileAdmissible` | `P10/Core.lean` | same | self-reviewed |
+| note: distinct values ⇒ distinct worlds | §2.1 note | `Evalπ(c,w₀) ≠ Evalπ(c,w₁)` entails semantic distinctness | `P10.worlds_distinct_of_values_differ` | `P10/Core.lean` | same | self-reviewed |
+| `CertificateTargetV0(π,e,c,w₀,w₁)` | §2.2 | `e ∈ Eπ ∧ w₀ ∈ Wπ ∧ w₁ ∈ Wπ ∧ Compatibleπ(e,w₀) ∧ Compatibleπ(e,w₁) ∧ Evalπ(c,w₀) ≠ Evalπ(c,w₁)` | `P10.CertificateTargetV0` (same conjunct order) | `P10/Core.lean` | same | self-reviewed |
+| witness-carrying certificate | §2.2 / task | fields = the six conjuncts + witnesses | `P10.UnderdeterminationCertificate` | `P10/Certificate.lean` | `66ae40938c87dab82b6e549a6813e3f65f015fb3b0d410dc5c57bab00681eb85` | self-reviewed |
+| certificate soundness (A) | §2.2 | valid certificate ⇒ `Underdeterminedπ` | `P10.certificate_sound` | `P10/Certificate.lean` | same | self-reviewed |
+| extraction (B) | §2.1/§2.2 | `Underdeterminedπ(e,c)` (`e ∈ Eπ`) ⇒ certificate exists | `P10.underdetermined_has_certificate`, `P10.underdetermined_iff_certificate` (stated with `Nonempty`; no choice principle) | `P10/Certificate.lean` | same | self-reviewed |
+| (C), (D) exclusivity | §2.1 | `Determinateπ ⇒ ¬Underdeterminedπ` and converse | `P10.determinate_not_underdetermined`, `P10.underdetermined_not_determinate` | `P10/Certificate.lean` | same | self-reviewed |
+| (E) search failure ≠ determinacy | §2.2 (`HALT` rule), §3 | failure to produce a certificate does not establish determinacy | `P10.no_certificate_does_not_imply_determinate`, `P10.empty_compatible_neither` | `P10/Certificate.lean` | same | self-reviewed |
+| checker-constructed target (`M34`) | §2.2, §7.1 M34 | "certificate MUST NOT supply or select its own target proposition" | `P10.Bound` + generated checker-owned `example` (`scripts/p10tool.py: checker_owned_check`); must-fail tests `M34_*`, `N5..N9` | `P10/Bound.lean`, `scripts/p10tool.py` | `c6593db03fd747073353d89145ebc727578ac18de9d6a6635262838f79cde874` | self-reviewed |
+| canonical codec, unique normal form (subset) | §2.7 | `decode ∘ encode = id` on `Wπ` | `P10.Wire.decode_encode` (all instances of the S1 profile); per-vector `canonical`; strict decoder | `P10/Wire.lean` | `db4a71279be1c27a24a92efd995a6b3fd5d81e53debe4cd078b306395990237d` | self-reviewed; **subset of JCS only** |
+| S1 reference profile (fixture, not a real profile) | §2.1, §7.1 M2/M3/M4 | finite `Wπ`, `Eπ`, decidable `Compatibleπ`, `Evalπ` | `P10.S1.profile`, `P10.S1.fuc`, `P10.S1.p1_pass`, `n1…n4`, `m3`, … | `P10/Fixtures.lean` | `979d860369a27afdff702c686acf688fe71e3f759adfa00bfca24b0023a2cca5` | self-reviewed |
+
+## Representation choices and deviations (all deliberate, all visible)
+
+1. **`Wπ`/`Eπ` as predicates over ambient types** (`inW`, `inE`), so `w ∈ Wπ` / `e ∈ Eπ` appear literally.
+   The profile repository's own Lean kernel (`lean/P10/Core.lean` there, not modified here) instead models
+   membership by dependent types and omits the §2.1 definitions other than the target; this repo adds them.
+2. **`Underdeterminedπ` (§2.1) does not mention `e ∈ Eπ`; `CertificateTargetV0` (§2.2) does.** Implemented exactly so.
+   Hence `certificate_sound` drops `e ∈ Eπ`, and `underdetermined_has_certificate` needs `e ∈ Eπ` as a hypothesis.
+3. **Curried quantifiers.** `∀ w₀ w₁ ∈ Wπ, A ∧ B → C` is `∀ w₀ w₁, inW w₀ → inW w₁ → A ∧ B → C` (equivalent).
+4. **Identifiers.** Lean identifiers cannot contain `ᵈ`/`ᵘ`; `eᵈ`, `eᵘ` are written `eD`, `eU` in code.
+5. **Wire codec.** §2.7 mandates JCS for claims, evidence, worlds and predicate. S1 uses a *strict subset*
+   (flat ASCII object, sorted keys, `[A-Za-z0-9_.:-]` string values) whose decoder the kernel can run. Codec conformance
+   for general worlds is **not demonstrated**.
+6. **Toolchain.** Lean **4.33.0** (conda-forge build), not the 4.34.0 pinned by the profile repository's own kernel:
+   the 4.34.0 release artifact was not obtainable in the build environment. No Mathlib dependency exists.
+
+## Not implemented (profile items outside S1)
+
+§2.3 `InstanceCommitment`/`SubjectDeriveV0`; §2.4 `FullPrefixReplay`, `LogIdentityV0`, `LeafEncodeV0`; §2.5
+`EvidenceAdmission`; §2.6 `EvidenceClosure`/`CoverageProof`; §4 full issuer payload (S1 has an experimental subset);
+SCITT Receipt (label 394) and registration; profile-mutations M5, M7, M9–M16, M18–M29, M12, M25–M28.
+Mutations covered here: M1 (partially), M3, M4, M8, M17, M30, M31, M32, M33, M34, M35 — see `TEST_VECTORS.md`.

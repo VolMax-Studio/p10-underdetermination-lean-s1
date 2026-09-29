@@ -1,0 +1,6 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages": [],
+ "name": "«p10-underdetermination-lean-s1»",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

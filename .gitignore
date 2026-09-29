@@ -1,0 +1,6 @@
+.lake/
+.venv/
+__pycache__/
+*.pyc
+.toolchain/
+.fakebin/
