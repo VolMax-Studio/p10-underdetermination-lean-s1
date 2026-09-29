@@ -23,6 +23,11 @@ theorem n1_wire_decodes : decode bytes = some ⟨.secondBit, .obs false (some fa
 
 theorem n1_wire_rejected : check bytes = false := by decide
 
+/-- Proposition-level: the kernel proves `¬ Holds` for these bytes (not merely `check = false`). -/
+theorem n1_not_holds : ¬ Holds bytes :=
+  not_holds_of_not_target n1_wire_decodes (n1_determined_no_target _ _)
+
 #print axioms n1_no_pair
 #print axioms n1_no_certificate
 #print axioms n1_wire_rejected
+#print axioms n1_not_holds

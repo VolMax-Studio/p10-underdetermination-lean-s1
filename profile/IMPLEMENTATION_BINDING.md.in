@@ -46,7 +46,8 @@ made no change to the mathematical definitions of `Determinateπ`, `Underdetermi
 | extraction (B) | §2.1/§2.2 | `Underdeterminedπ(e,c)` (`e ∈ Eπ`) ⇒ certificate exists | `P10.underdetermined_has_certificate`, `P10.underdetermined_iff_certificate` (stated with `Nonempty`; no choice principle) | `P10/Certificate.lean` | same | self-reviewed |
 | (C), (D) exclusivity | §2.1 | `Determinateπ ⇒ ¬Underdeterminedπ` and converse | `P10.determinate_not_underdetermined`, `P10.underdetermined_not_determinate` | `P10/Certificate.lean` | same | self-reviewed |
 | (E) search failure ≠ determinacy | §2.2 (`HALT` rule), §3 | failure to produce a certificate does not establish determinacy | `P10.no_certificate_does_not_imply_determinate`, `P10.empty_compatible_neither` | `P10/Certificate.lean` | same | self-reviewed |
-| checker-constructed target (`M34`) | §2.2, §7.1 M34 | "certificate MUST NOT supply or select its own target proposition" | `P10.Bound` + generated checker-owned `example` (`scripts/p10tool.py: checker_owned_check`); must-fail tests `M34_*`, `N5..N9` | `P10/Bound.lean`, `scripts/p10tool.py` | `{{sha:P10/Bound.lean}}` | self-reviewed |
+| statement proposition = exact target for the NAMED witnesses | §2.2 `certificate.type = CertificateTargetV0(π,e,c,w₀,w₁)`, §7.1 M34 | `e ∈ Eπ ∧ w₀,w₁ ∈ Wπ ∧ Compatibleπ(e,w₀) ∧ Compatibleπ(e,w₁) ∧ Evalπ(c,w₀) ≠ Evalπ(c,w₁)` with `e,c,w₀,w₁` decoded from the committed bytes | `P10.Wire.Holds` (= canonical form ∧ `CertificateTargetV0` of the decoded instance), `P10.Wire.holds_iff`, `P10.Wire.not_holds_of_not_target`, `P10.CertificateTargetV0.underdetermined` | `P10/Wire.lean`, `P10/Core.lean` | `{{sha:P10/Wire.lean}}` | self-reviewed; **fixed in PR #2 (gate F1): PR #1 asserted only the weaker `Underdeterminedπ(e,c)`** |
+| checker-constructed target (`M34`) | §2.2, §7.1 M34 | "certificate MUST NOT supply or select its own target proposition" | `P10.Bound`; verifier-written, separately PRECOMPILED `CheckerTarget.Target`; certificate checked against it (`scripts/p10tool.py: checker_owned_check`); must-fail tests `M34_*`, `N5..N9`, `F1_*` | `P10/Bound.lean`, `scripts/p10tool.py` | `{{sha:P10/Bound.lean}}` | self-reviewed; **hardened in PR #2 (gate F2, F3)** |
 | canonical codec, unique normal form (subset) | §2.7 | `decode ∘ encode = id` on `Wπ` | `P10.Wire.decode_encode` (all instances of the S1 profile); per-vector `canonical`; strict decoder | `P10/Wire.lean` | `{{sha:P10/Wire.lean}}` | self-reviewed; **subset of JCS only** |
 | S1 reference profile (fixture, not a real profile) | §2.1, §7.1 M2/M3/M4 | finite `Wπ`, `Eπ`, decidable `Compatibleπ`, `Evalπ` | `P10.S1.profile`, `P10.S1.fuc`, `P10.S1.p1_pass`, `n1…n4`, `m3`, … | `P10/Fixtures.lean` | `{{sha:P10/Fixtures.lean}}` | self-reviewed |
 
@@ -57,12 +58,16 @@ made no change to the mathematical definitions of `Determinateπ`, `Underdetermi
    membership by dependent types and omits the §2.1 definitions other than the target; this repo adds them.
 2. **`Underdeterminedπ` (§2.1) does not mention `e ∈ Eπ`; `CertificateTargetV0` (§2.2) does.** Implemented exactly so.
    Hence `certificate_sound` drops `e ∈ Eπ`, and `underdetermined_has_certificate` needs `e ∈ Eπ` as a hypothesis.
+   The statement layer (`P10.Wire.Holds`) uses `CertificateTargetV0`, NOT `Underdeterminedπ`: `Underdeterminedπ` says
+   "some pair exists" and would let a certificate vouch for named witnesses that are invalid.
 3. **Curried quantifiers.** `∀ w₀ w₁ ∈ Wπ, A ∧ B → C` is `∀ w₀ w₁, inW w₀ → inW w₁ → A ∧ B → C` (equivalent).
 4. **Identifiers.** Lean identifiers cannot contain `ᵈ`/`ᵘ`; `eᵈ`, `eᵘ` are written `eD`, `eU` in code.
 5. **Wire codec.** §2.7 mandates JCS for claims, evidence, worlds and predicate. S1 uses a *strict subset*
    (flat ASCII object, sorted keys, `[A-Za-z0-9_.:-]` string values) whose decoder the kernel can run. Codec conformance
    for general worlds is **not demonstrated**.
-6. **Toolchain.** Lean **4.33.0** (conda-forge build), not the 4.34.0 pinned by the profile repository's own kernel:
+6. **Source policy and kernel replay.** Certificate modules are restricted (`profile/AXIOM_POLICY.md`); every module is
+   additionally replayed through the kernel with the toolchain's `leanchecker`.
+7. **Toolchain.** Lean **4.33.0** (conda-forge build), not the 4.34.0 pinned by the profile repository's own kernel:
    the 4.34.0 release artifact was not obtainable in the build environment. No Mathlib dependency exists.
 
 ## Not implemented (profile items outside S1)

@@ -95,4 +95,10 @@ theorem worlds_distinct_of_values_differ {π : Profile} {c : π.Claim}
   apply h
   rw [hEq]
 
+/-- `CertificateTargetV0` implies `Underdeterminedπ` (drop the two membership facts about `e`, forget nothing
+else). The converse is false in general: `Underdeterminedπ` does not name the witnesses. -/
+theorem CertificateTargetV0.underdetermined {π : Profile} {e : π.Evidence} {c : π.Claim}
+    {w₀ w₁ : π.World} (h : CertificateTargetV0 π e c w₀ w₁) : Underdetermined π e c :=
+  ⟨w₀, w₁, h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2⟩
+
 end P10

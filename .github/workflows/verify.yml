@@ -24,6 +24,10 @@ jobs:
           eval "$(scripts/install_toolchain.sh)"
           echo "$PWD/.toolchain/lean4-4.33.0/bin" >> "$GITHUB_PATH"
       - name: Canonical verification (fail-closed, includes mutation suite)
+        # In-tree pin: this CI run proves SELF-CONSISTENCY of the tree only. It is NOT an external trust anchor;
+        # the manifest digest must be pinned out of band by whoever relies on the result (see README).
+        env:
+          P10_ALLOW_INTREE_PIN: "1"
         run: ./scripts/verify.sh
       - name: Artifact hashes
         if: always()

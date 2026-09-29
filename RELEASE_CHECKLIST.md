@@ -8,5 +8,5 @@ Nothing in this repo is ratified. This list is for a maintainer; no step here wa
 - [ ] Decide the Lean version policy (profile kernel uses 4.34.0; S1 pins 4.33.0) and re-pin, then `scripts/regen.sh`.
 - [ ] Decide whether to keep the S1 wire subset or move to full JCS worlds (S2).
 - [x] CI actions pinned to commit SHAs (done; SHAs taken from CI run #2 log — re-check against the action repos when convenient).
-- [ ] Publish the pinned manifest digest out-of-band (README, profile InstanceCommitment) — never only in-tree.
+- [ ] Publish the manifest digest out of band (profile InstanceCommitment, an independent channel). `verify.sh` now HALTs without an external pin (`P10_EXPECT_MANIFEST_SHA256`); CI runs in explicit in-tree self-consistency mode.
 - [ ] Only then: human-signed tag/ratification (not done here; the drafting agent never used a human signing key).

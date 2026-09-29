@@ -32,6 +32,7 @@ L.append("## Positive vector P1\n")
 L.append(f"| file | SHA-256 | outcome |\n|---|---|---|\n| `{pos}` | `{sha(pos)}` | certificate PASS (`P10.Certs.P1.cert`) |\n")
 L.append("Bytes: `" + open(pos).read() + "`\n")
 L.append("## Negative vectors (all rejected)\n")
+L.append("For the semantic negatives (N1–N4, M3, M-E) the kernel proves `¬ Holds bytes` at the PROPOSITION level (the exact `CertificateTargetV0` for the witnesses named in the bytes is refuted), and the F1 must-fail tests show that an honest `Underdetermined` proof through a *different* pair no longer type-checks.\n")
 L.append("| id | file | SHA-256 | why rejected | Lean evidence |\n|---|---|---|---|---|")
 for k, (i, why, ev) in negs.items():
     p = f"vectors/negative/{k}.json"

@@ -16,6 +16,8 @@ Bytes: `{"claim":"secondBit","evidence":"f0s_","kind":"p10-s1-instance-v0","prof
 
 ## Negative vectors (all rejected)
 
+For the semantic negatives (N1–N4, M3, M-E) the kernel proves `¬ Holds bytes` at the PROPOSITION level (the exact `CertificateTargetV0` for the witnesses named in the bytes is refuted), and the F1 must-fail tests show that an honest `Underdetermined` proof through a *different* pair no longer type-checks.
+
 | id | file | SHA-256 | why rejected | Lean evidence |
 |---|---|---|---|---|
 | N1 | `vectors/negative/n1_determined.json` | `d5788855d7521bc4…` | evidence f0s0 determines `secondBit`; no pair can be a target | tests/DeterminedReject.lean; must_fail/N1_determined |
@@ -37,9 +39,9 @@ Bytes: `{"claim":"secondBit","evidence":"f0s_","kind":"p10-s1-instance-v0","prof
 
 | artifact | SHA-256 |
 |---|---|
-| `vectors/out/p1.statement.json` | `33c6caa62c675932ae9e1bb117d273fb57a0b888a46572703091c6efe2e349b3` |
-| `vectors/out/p1.cose` | `b49dacc2fd72dc4a4495f50d4a7e153961c6183e6636700d7cafdecfd6d4cfb9` |
-| `manifest/VerifierManifestS1.json` | `18a591ecac0df4f315336439cf48de78c7c6c11869f1122b9fd0d7d759e536b8` |
+| `vectors/out/p1.statement.json` | `8773c3ff2d2c0722de9d5f9c73da7900f31889b22212cc2983d759bf74d08dfc` |
+| `vectors/out/p1.cose` | `bb84e352cf93ca5d8d07b1ea62d9c83423a476e3d24aee0da1fb2466a488316b` |
+| `manifest/VerifierManifestS1.json` | `06bf9129bf480c79ed5281ec2e944ac5613d1c340552ce5a415f5bf4c8965907` |
 
 Bound fields (all recomputed and matched by `scripts/p10tool.py verify`):
 
@@ -53,19 +55,19 @@ Bound fields (all recomputed and matched by `scripts/p10tool.py verify`):
 | witness w0 digest (JCS `{"world":…}`) | `15304eb2956a2f07fbf4028dfd7f421c99f9a03da473fec9d75b997132747f32` |
 | witness w1 digest | `6fc3108dc0bf1f6cf7fe5df39b513c3b7be7312111a0ef0c4a05839194db5d5b` |
 | proposition (Lean statement) | `P10.Bound (filebytes% "vectors/p1.instance.json") (hex% "62353069823aace3a91b37ffabcdf7b2d608134457276b2a5e597ebb49e0e824")` |
-| proposition identity digest | `eee47309405ddaf2fca9fb69e82710292772ee94a0cbf03a1631535a45e02fa7` |
-| semantics source digest (Core, Certificate, Fixtures) | `60267beda65ee379344a2745aae66d6efc5ed6383852fb9f6e1077495c9beea9` |
-| decoder/canonicalizer/binding source digest (Bytes, Wire, Sha256, Bound) | `bcd450377f30f02c979ccecc73cdac5b208a6bff8b81cf7f1209c363b77359ec` |
-| certificate module digest | `af4363e92bb7d657d333ec020c6c05a1aab153b55fa980d0677b8c5d3cf800c2` |
-| axiom-audit output digest | `7eab190bc8bb53189242809ad6c3d0b41249471f5c8b4af6b7a5565c708efc70` |
-| checker-owned check output digest | `5a7bd77da74d6f6fd04fe29aa4c49f5f0ae9da768717fd2793c47dabf28bbdbc` |
+| proposition identity digest | `4ab9e6e51f6b75f30ace73e1de99da0f61af1c26ee33d234f844426de050aa9f` |
+| semantics source digest (Core, Certificate, Fixtures) | `8068116caa7530e377ba02e07f667b9ea3d069cd70ba33afd9cae00a47589665` |
+| decoder/canonicalizer/binding source digest (Bytes, Wire, Sha256, Bound) | `6aa82479dff8744734807ef1d92fe053c113d00d2221505cc0b2b52c441eb0eb` |
+| certificate module digest | `aa4ff583c0ed99039478c3bd04148867d350f8c1803a30e8d8a7372902d06850` |
+| axiom-audit output digest | `63942a461e9a69ca79acf938044d3a2d79c9e37aca3be7fa9b14ba69373192ff` |
+| checker-owned check output digest | `7aff12915a0948aac84784b960cf78d83ab437cf27f6cf38b7f90bc98f2bf1f6` |
 | Lean version | `Lean (version 4.33.0, commit 5da8a13c67369827303c441170d2f4051339df4c, Release)` |
 | Lean executable digest | `9842f89b9a1874db969cc58933e4117c397338f795eb8febffeb79edd5272847` |
 | libleanshared.so digest | `0df64f2384d4152ccb675b2e6b9ad4769d71c8ce168f6e2c24324df0db897c4d` |
 | Mathlib | `not used (no dependencies; lake-manifest.json has an empty package list)` |
 | lake-manifest.json digest | `b8605f290786c5df95601f197c0718e9daef299745626a24cdb273fd68a7e5d5` |
-| verifier manifest digest (pinned in `profile/VERIFIER_MANIFEST_PIN.txt`) | `18a591ecac0df4f315336439cf48de78c7c6c11869f1122b9fd0d7d759e536b8` |
-| verifier scripts digest | `9d3bbed22bc1406e83cd62e7902874e58bd83d10ef09706a5b01d6a19efd5aa8` |
+| verifier manifest digest (pinned in `profile/VERIFIER_MANIFEST_PIN.txt`) | `06bf9129bf480c79ed5281ec2e944ac5613d1c340552ce5a415f5bf4c8965907` |
+| verifier scripts digest | `79bdf9875ffbd423daea64a9b2659e7479c17dbabd501f43d997ebdabc4727b9` |
 | limitations digest | `091116f19a63f244aaf119451a540b50b385deb6e40a9de9058ee2f46f43fd1c` |
 | proof/check mode | `Lean kernel type-check of P10.Bound (kernel-evaluated SHA-256 + decoder + checker via `decide`); native_decide: not used; custom axioms: none; sorry: none` |
 

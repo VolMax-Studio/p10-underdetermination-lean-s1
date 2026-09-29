@@ -4,10 +4,12 @@ import P10.Bound
 # Certificate for the positive vector P1
 
 The certificate is a kernel-checked term of type `Bound bytes digest`, where `bytes` is the
-literal content of `vectors/p1.instance.json` (via `filebytes%`). The proposition is
-fixed by `P10.Bound` (which contains `P10.Wire.Holds`); the certificate cannot choose it. The checker-owned
-statement `Bound (filebytes% "vectors/p1.instance.json") (hex% <digest>)` is re-elaborated by
-`scripts/verify.sh` in a separate file that imports only this module's theorem name.
+literal content of `vectors/p1.instance.json` (via `filebytes%`). The proposition is fixed by `P10.Bound`
+(canonical form + the exact `CertificateTargetV0` for the witnesses named in the bytes); the
+certificate cannot choose it. The verifier checks this theorem against `CheckerTarget.Target`, a
+definition it writes and PRECOMPILES in its own Lean process (literal bytes and digest) before this
+module is loaded, then replays the whole library with `leanchecker`
+(see `scripts/p10tool.py: checker_owned_check`).
 -/
 
 set_option maxRecDepth 100000
@@ -39,8 +41,12 @@ theorem cert : P10.Bound bytes digest :=
 /-- Undigested form. -/
 theorem holds : Holds bytes := cert.holds
 
+/-- Unpacked: the exact `CertificateTargetV0` for the witnesses NAMED in the bytes. -/
+theorem target : CertificateTargetV0 profile eU c0 .w00 .w01 :=
+  ((holds_iff decoded).1 holds).2
+
 /-- Unpacked: `Underdeterminedπ(eU, secondBit)` in the S1 profile. -/
 theorem underdetermined : Underdetermined profile eU c0 :=
-  ((holds_iff decoded).1 holds).2
+  holds_underdetermined decoded holds
 
 end P10.Certs.P1

@@ -51,7 +51,7 @@ TOOLCHAIN_FILES = ["lean-toolchain", "lakefile.toml", "lake-manifest.json"]
 POLICY_FILES = ["profile/AXIOM_POLICY.md", "profile/ACCEPTANCE_COMMAND.txt"]
 VERIFIER_FILES = ["scripts/p10tool.py", "scripts/verify.sh", "scripts/mutation_suite.py",
                   "scripts/run_tests.py", "scripts/lint_lean.py", "scripts/install_toolchain.sh",
-                  "scripts/cose_crosscheck.py", "scripts/check_env.py", "scripts/gen_binding.py", "scripts/gen_testvectors_md.py",
+                  "scripts/cose_crosscheck.py", "scripts/check_env.py", "scripts/CheckModule.lean", "scripts/gen_binding.py", "scripts/gen_testvectors_md.py",
                   "scripts/gen_vectors.py", "scripts/regen.sh", "scripts/update_sums.sh"]
 AUDIT_FILE = "P10/AxiomAudit.lean"
 MANIFEST_PATH = "manifest/VerifierManifestS1.json"
@@ -215,35 +215,78 @@ def build_limitations(profile_bytes: bytes) -> list[dict]:
 
 # ----------------------------------------------------------------------------- lean interaction
 
+def _sha_of_path(path: str) -> str:
+    with open(path, "rb") as f:
+        return sha256_bytes(f.read())
+
+
 def lean_env_info(root: str) -> dict:
     rc, out = run(["lean", "--version"], root)
     if rc != 0:
         halt("lean unavailable")
-    lean_path = os.path.realpath(subprocess.run(["which", "lean"], capture_output=True).stdout.decode().strip())
-    with open(lean_path, "rb") as f:
-        lean_sha = sha256_bytes(f.read())
+    which = lambda name: os.path.realpath(subprocess.run(["which", name], capture_output=True)
+                                          .stdout.decode().strip() or "/nonexistent")
+    lean_path = which("lean")
+    if not os.path.isfile(lean_path):
+        halt("lean executable not found on PATH")
+    # `lake env` must resolve to the SAME lean executable (F5): otherwise the digest we pin is not the
+    # binary that actually runs the checks.
+    rc, resolved = run(["lake", "env", "sh", "-c", "command -v lean"], root)
+    if rc != 0 or os.path.realpath(resolved.strip().splitlines()[-1]) != lean_path:
+        reject("`lake env` resolves a different lean executable than the one on PATH")
+    lake_path, lc_path = which("lake"), which("leanchecker")
+    if not os.path.isfile(lake_path) or not os.path.isfile(lc_path):
+        halt("lake or leanchecker not found next to the toolchain")
     shared = os.path.join(os.path.dirname(os.path.dirname(lean_path)), "lib", "lean", "libleanshared.so")
-    shared_sha = "absent"
-    if os.path.isfile(shared):
-        with open(shared, "rb") as f:
-            shared_sha = sha256_bytes(f.read())
-    return {"version_string": out.strip(), "executable_sha256": lean_sha, "shared_lib_sha256": shared_sha}
+    shared_sha = _sha_of_path(shared) if os.path.isfile(shared) else "absent"
+    return {"version_string": out.strip(), "executable_sha256": _sha_of_path(lean_path),
+            "shared_lib_sha256": shared_sha, "lake_sha256": _sha_of_path(lake_path),
+            "leanchecker_sha256": _sha_of_path(lc_path)}
 
 
-def lean_build(root: str, clean: bool = True):
+def lean_build(root: str, clean: bool = True, extra: list[str] | None = None):
     """Build from scratch by default: `filebytes%` reads files that Lake does not track as
     dependencies, so an incremental build could hide a changed vector."""
     if clean:
         shutil.rmtree(os.path.join(root, ".lake", "build"), ignore_errors=True)
-    rc, out = run(["lake", "build"], root)
+    rc, out = run(["lake", "build", "P10", *(extra or [])], root)
     if rc != 0:
         reject("lake build failed:\n" + out[-2000:])
     return out
 
 
+def _lean_in(root: str, td: str, script: str, *args: str) -> tuple[int, str]:
+    """Run a shell snippet under `lake env` with the temp dir appended to LEAN_PATH."""
+    return run(["lake", "env", "sh", "-c", 'LEAN_PATH="$LEAN_PATH:$1"; export LEAN_PATH; shift; ' + script,
+                "sh", td, *args], root)
+
+
+def leanchecker_replay(root: str) -> str:
+    """Kernel REPLAY of every module of the P10 library (including every certificate module present),
+    using the toolchain's `leanchecker` (non-`--fresh`: each module's own declarations are re-checked
+    against the trusted toolchain environment; `--fresh` would re-check all of Lean core too, ~4 min). `#print axioms` alone is not a kernel check: meta code can add
+    declarations with the kernel skipped and still print 'no axioms'; replay re-checks every declaration."""
+    rc, out = run(["lake", "env", "leanchecker", "P10"], root)
+    if rc != 0 or "found a problem" in out or "uncaught exception" in out:
+        reject("leanchecker kernel replay failed for the P10 library:\n" + out[-1500:])
+    return out
+
+
 def checker_owned_check(root: str, vector: str, digest: str, module: str, theorem: str) -> str:
-    """Generate the CHECKER-OWNED statement from the committed bytes and ask Lean to
-    check the certificate against it. The certificate never supplies its own proposition."""
+    """Check the certificate against a CHECKER-OWNED, PRECOMPILED target.
+
+    1. The verifier writes `CheckerTarget.lean` (trusted text: literal bytes via `filebytes%`, literal
+       digest via `hex%`, `Target := P10.Bound bytes digest`) and compiles it in its own Lean process
+       BEFORE the certificate module is loaded — so nothing in the certificate can influence how the
+       target is elaborated (F2: macro hijack of `filebytes%`/`hex%`).
+    2. `CheckerOwned.lean` imports the compiled target and the certificate module and states
+       `theorem checked : CheckerTarget.Target := <certificate theorem>`.
+    3. `leanchecker` replays the kernel check of CheckerTarget, CheckerOwned and — module by module — the
+       whole P10 library including the certificate module (F3: declarations added with the kernel
+       skipped are refused). Lean core itself is trusted via the pinned toolchain digests.
+    4. `scripts/CheckModule.lean` reads CheckerOwned.olean WITHOUT importing it and requires that
+       `checked` is a theorem whose type is exactly the constant `CheckerTarget.Target`.
+    The certificate never supplies, selects or influences its own proposition."""
     if not re.fullmatch(r"[A-Za-z0-9_./-]+", vector) or ".." in vector:
         reject("unsafe vector path")
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -251,24 +294,51 @@ def checker_owned_check(root: str, vector: str, digest: str, module: str, theore
     if not re.fullmatch(r"P10\.Certs\.[A-Za-z0-9_]+", module) or \
             not re.fullmatch(r"P10\.Certs\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", theorem):
         reject("unsafe module/theorem name")
-    src = (
-        f"import {module}\n"
-        f"set_option maxRecDepth 100000\n"
-        f"example : P10.Bound (filebytes% \"{vector}\") (hex% \"{digest}\") := {theorem}\n"
-        f"#print axioms {theorem}\n"
+    target_src = (
+        "import P10.Bound\n"
+        "namespace CheckerTarget\n"
+        f"def bytes : List Nat := filebytes% \"{vector}\"\n"
+        f"def digest : List Nat := hex% \"{digest}\"\n"
+        "def Target : Prop := P10.Bound bytes digest\n"
+        "end CheckerTarget\n"
     )
-    with tempfile.TemporaryDirectory(dir=root) as td:
-        f = os.path.join(td, "CheckerOwned.lean")
-        with open(f, "w") as fh:
-            fh.write(src)
-        rc, out = run(["lake", "env", "lean", os.path.relpath(f, root)], root)
-    if rc != 0:
-        reject("Lean rejected the certificate against the checker-owned proposition:\n" + out[-1500:])
-    want = f"'{theorem}' does not depend on any axioms"
-    lines = [l for l in out.splitlines() if l.strip()]
-    if lines != [want]:
-        reject("unexpected Lean output (axioms/warnings) for checker-owned check:\n" + out[-1500:])
-    return out
+    owned_src = (
+        "import CheckerTarget\n"
+        f"import {module}\n"
+        "set_option maxRecDepth 100000\n"
+        f"theorem checked : CheckerTarget.Target := {theorem}\n"
+        "#print axioms checked\n"
+    )
+    td = tempfile.mkdtemp(dir=root, prefix=".checker-")
+    try:
+        for name, src in (("CheckerTarget", target_src), ("CheckerOwned", owned_src)):
+            with open(os.path.join(td, name + ".lean"), "w") as fh:
+                fh.write(src)
+        rc, out = _lean_in(root, td, 'lean --root="$1" -o "$1/CheckerTarget.olean" "$1/CheckerTarget.lean"', td)
+        if rc != 0:
+            reject("checker-owned target failed to compile (trusted text; this is a verifier bug or a "
+                   "tampered toolchain):\n" + out[-1500:])
+        rc, out = _lean_in(root, td, 'lean --root="$1" -o "$1/CheckerOwned.olean" "$1/CheckerOwned.lean"', td)
+        if rc != 0:
+            reject("Lean rejected the certificate against the checker-owned proposition:\n" + out[-1500:])
+        want = "'checked' does not depend on any axioms"
+        lines = [l for l in out.splitlines() if l.strip()]
+        if lines != [want]:
+            reject("unexpected Lean output (axioms/warnings) for checker-owned check:\n" + out[-1500:])
+        for mod in ("CheckerTarget", "CheckerOwned"):
+            rc, lc = _lean_in(root, td, f"leanchecker {mod}")
+            if rc != 0 or "found a problem" in lc or "uncaught exception" in lc:
+                reject(f"leanchecker kernel replay rejected the checker-owned module {mod}:\n" + lc[-1500:])
+        # `leanchecker M` replays only M's own declarations (imports are trusted), so the certificate
+        # module and every other module of the P10 library are replayed one by one here:
+        leanchecker_replay(root)
+        rc, ty = _lean_in(root, td, 'lean --run scripts/CheckModule.lean "$1/CheckerOwned.olean" '
+                                    'checked CheckerTarget.Target', td)
+        if rc != 0 or not ty.strip().startswith("type-ok"):
+            reject("checked theorem does not have the exact checker-owned type:\n" + ty[-800:])
+        return out
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
 
 
 def axiom_audit(root: str) -> str:
@@ -313,6 +383,8 @@ def compute_manifest(root: str, with_oleans: bool = True) -> dict:
         "lean_toolchain_artifact_identifier": "lean-linux-x86_64-executable (conda-forge lean4 4.33.0 build h6c1889d_0)",
         "lean_toolchain_artifact_sha256": lean["executable_sha256"],
         "lean_shared_library_sha256": lean["shared_lib_sha256"],
+        "lake_executable_sha256": lean["lake_sha256"],
+        "leanchecker_executable_sha256": lean["leanchecker_sha256"],
         "mathlib": "not used (no dependencies; lake-manifest.json has an empty package list)",
         "semantics_source_digest": sem_d, "semantics_source_files": sem_e,
         "decoder_source_digest": dec_d, "decoder_source_files": dec_e,
@@ -447,7 +519,10 @@ def build_statement(root: str, vector: str, module: str, theorem: str, cert_file
         except Verdict:
             pass
     else:
-        lean_build(root)
+        if not re.fullmatch(r"P10\.Certs\.[A-Za-z0-9_]+", module):
+            reject("unsafe certificate module name")
+        lint_sources(root)
+        lean_build(root, extra=[module])
         audit_out = axiom_audit(root)
         cert_out = checker_owned_check(root, vector, inst_sha, module, theorem)
     cert_sha = sha256_file(root, cert_file)
@@ -529,8 +604,22 @@ def build_statement(root: str, vector: str, module: str, theorem: str, cert_file
 SPEC_TOK_RE = re.compile(r'bytes% "sha256:([0-9a-f]{64})"')
 
 
+def lint_sources(root: str) -> str:
+    """Run the source-policy gate over every Lean source the verifier will build or import."""
+    rc, out = run([sys.executable, "scripts/lint_lean.py", "P10", "P10.lean", "tests"], root)
+    if rc != 0:
+        reject("Lean source policy violation (lint_lean.py):\n" + out[-1500:])
+    return out
+
+
 def verify(root: str, cose_path: str, manifest_pin: str | None) -> dict:
     report = {"checks": []}
+    if not manifest_pin:
+        # The pin is the ONLY root of trust for the verifier tree; a tree cannot vouch for itself.
+        halt("an EXTERNAL verifier-manifest pin (--manifest-digest) is required; without it the verifier "
+             "tree would be trusting itself, so no epistemic verdict is issued")
+    if not re.fullmatch(r"[0-9a-f]{64}", manifest_pin):
+        reject("malformed manifest pin")
 
     def ok(name, detail=""):
         report["checks"].append({"check": name, "result": "ok", "detail": detail})
@@ -587,8 +676,8 @@ def verify(root: str, cose_path: str, manifest_pin: str | None) -> dict:
     # --- manifest
     committed = read_bytes(root, MANIFEST_PATH)
     manifest_sha = sha256_bytes(committed)
-    if manifest_pin is not None and manifest_pin != manifest_sha:
-        reject("manifest digest differs from the pinned (profile-committed) digest (M33)")
+    if manifest_pin != manifest_sha:
+        reject("manifest digest differs from the externally supplied pin (M33)")
     if pred["verifier"]["manifest_sha256"] != manifest_sha:
         reject("statement verifier digest differs from the committed manifest (M35)")
     man = json.loads(committed)
@@ -605,6 +694,8 @@ def verify(root: str, cose_path: str, manifest_pin: str | None) -> dict:
     lean = lean_env_info(root)
     if lean["executable_sha256"] != man["lean_toolchain_artifact_sha256"] or \
             lean["shared_lib_sha256"] != man["lean_shared_library_sha256"] or \
+            lean["lake_sha256"] != man["lake_executable_sha256"] or \
+            lean["leanchecker_sha256"] != man["leanchecker_executable_sha256"] or \
             lean["version_string"] != man["lean_version_string"]:
         reject("Lean toolchain artifact differs from the manifest (M33)")
     with open(os.path.join(root, "lean-toolchain")) as f:
@@ -645,11 +736,15 @@ def verify(root: str, cose_path: str, manifest_pin: str | None) -> dict:
     cf = cert["lean_module_path"]
     if cf not in [e["path"] for e in man["certificate_source_files"]]:
         reject("certificate module is not bound by the manifest")
+    if not re.fullmatch(r"P10\.Certs\.[A-Za-z0-9_]+", cert["lean_module"]):
+        reject("unsafe certificate module name")
     if cf != cert["lean_module"].replace(".", "/") + ".lean":
         reject("certificate module name does not match its path")
     if sha256_file(root, cf) != cert["lean_module_sha256"]:
         reject("certificate module digest mismatch")
-    lean_build(root)
+    lint_sources(root)
+    ok("lean_source_policy")
+    lean_build(root, extra=[cert["lean_module"]])
     # oleans exist only after build; recompute manifest oleans against committed manifest
     if jcs(compute_manifest(root)) != committed:
         reject("build outputs (.olean digests) differ from the committed manifest (M33)")
@@ -659,7 +754,8 @@ def verify(root: str, cose_path: str, manifest_pin: str | None) -> dict:
     out_chk = checker_owned_check(root, vec, inst_sha, cert["lean_module"], cert["theorem"])
     if sha256_bytes(out_chk.encode()) != cert["checker_owned_output_sha256"]:
         reject("checker-owned check output digest differs from the statement")
-    ok("lean_kernel_check", f"{cert['theorem']} : Bound <{vec}> <sha256 {inst_sha[:16]}…>; axioms: none")
+    ok("lean_kernel_check", f"{cert['theorem']} : Bound <{vec}> <sha256 {inst_sha[:16]}…>; axioms: none; "
+       "kernel replay (leanchecker) of the P10 library + checker-owned modules")
 
     report["verdict"] = PASS
     report["claim"] = ("NotDemonstrated(reason=underdetermined) is established relative to the committed "
@@ -686,7 +782,7 @@ def main(argv=None) -> int:
             sp.add_argument("--skip-lean", action="store_true", help=argparse.SUPPRESS)
         if name == "verify":
             sp.add_argument("cose")
-            sp.add_argument("--manifest-digest")
+            sp.add_argument("--manifest-digest", help="REQUIRED (HALT without it): sha256 of the verifier manifest, obtained out of band")
         if name == "lean-check":
             sp.add_argument("vector")
             sp.add_argument("digest")
