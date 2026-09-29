@@ -14,8 +14,11 @@ theorem n3_both_compatible_and_distinct :
   n3_witnesses_compatible_and_distinct
 theorem n3_target_refuted : ¬ CertificateTargetV0 profile eU c1 .w00 .w01 := n3_same_value_rejected
 theorem n3_wire_rejected : check n3 = false := by decide
+theorem n3_decodes : decode n3 = some ⟨.firstBit, .obs false none, .w00, .w01⟩ := by decide
+theorem n3_not_holds : ¬ Holds n3 := not_holds_of_not_target n3_decodes n3_same_value_rejected
 /-- The evidence is in fact determinate for this claim. -/
 theorem n3_evidence_determinate : Determinate profile eU c1 := eU_determinate_for_firstBit
 
 #print axioms n3_wire_rejected
+#print axioms n3_not_holds
 #print axioms n3_evidence_determinate

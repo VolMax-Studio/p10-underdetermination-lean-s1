@@ -35,8 +35,12 @@ theorem search_none_is_uninformative :
   none_does_not_decide_determinacy
 
 theorem n4_wire_rejected : check n4 = false := by decide
+theorem n4_decodes : decode n4 = some ⟨.secondBit, .inconsistent, .w00, .w01⟩ := by decide
+theorem n4_not_holds : ¬ Holds n4 :=
+  not_holds_of_not_target n4_decodes (fun h => n4_inconsistent_neither.1 h.underdetermined)
 
 #print axioms schema
 #print axioms n4_neither
 #print axioms search_none_is_uninformative
 #print axioms n4_wire_rejected
+#print axioms n4_not_holds

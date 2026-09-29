@@ -57,7 +57,7 @@ for f in sorted(glob.glob("tests/must_fail/*.lean")):
         dep = re.search(r"depends on axioms: \[", out) is not None
         check(f + " (axiom gate must reject)", rc == 0 and dep, out)
     else:
-        why = ("Type mismatch" in out) or ("proved that the proposition" in out)
+        why = ("type mismatch" in out.lower()) or ("proved that the proposition" in out)
         check(f, rc != 0 and why, out)
 
 print("== sha256 differential (interpreter vs hashlib)")

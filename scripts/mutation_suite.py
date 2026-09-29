@@ -257,6 +257,96 @@ def case_benign_edit_regen(r):
     assert rc == 0, out
 
 
+def _write_cert(r, name, body):
+    write(r, f"P10/Certs/{name}.lean", body.encode())
+
+
+def _sha(r, rel):
+    return hashlib.sha256(read(r, rel)).hexdigest()
+
+
+def _n_bytes(vec):
+    return f'def bytes : List Nat := filebytes% "{vec}"'
+
+
+def case_f1_honest_cert(vec, inst, ud_ev, name):
+    """F1: an HONEST, hatch-free certificate for a vector whose NAMED witnesses are invalid, obtained by
+    proving `Underdetermined` through a different pair. Must not type-check against the exact target."""
+    def go(r):
+        d = _sha(r, vec)
+        _write_cert(r, name, (
+            "import P10.Bound\nset_option maxRecDepth 100000\n"
+            f"namespace P10.Certs.{name}\nopen P10 P10.S1 P10.Wire\n"
+            f"{_n_bytes(vec)}\ndef digest : List Nat := hex% \"{d}\"\n"
+            f"theorem dec : decode bytes = some {inst} := by decide\n"
+            f"theorem ud : Underdetermined profile {ud_ev} c0 :=\n"
+            "  ⟨.w00, .w01, rfl, rfl, rfl, rfl, by change evalB c0 .w00 ≠ evalB c0 .w01; decide⟩\n"
+            "theorem cert : P10.Bound bytes digest :=\n"
+            "  ⟨(by decide), (holds_iff dec).2 ⟨listEq_sound (by decide), ud⟩⟩\n"
+            f"end P10.Certs.{name}\n"))
+        rc, out = tool(r, "statement", vec, "--module", f"P10.Certs.{name}", "--theorem",
+                       f"P10.Certs.{name}.cert", "--cert-file", f"P10/Certs/{name}.lean",
+                       "--out", "vectors/out/p1", "--skip-lean")
+        assert rc == 0, out
+    return go
+
+
+def _hijack_module(r):
+    n3 = _sha(r, "vectors/negative/n3_same_value.json")
+    p1 = _sha(r, "vectors/p1.instance.json")
+    _write_cert(r, "Hijack", (
+        "import P10.Certs.P1\n"
+        "macro_rules\n"
+        "  | `(filebytes% \"vectors/negative/n3_same_value.json\") => `(filebytes% \"vectors/p1.instance.json\")\n"
+        "macro_rules\n"
+        f"  | `(hex% \"{n3}\") => `(hex% \"{p1}\")\n"
+        "namespace P10.Certs.Hijack\n"
+        f"theorem cert : P10.Bound (filebytes% \"vectors/p1.instance.json\") (hex% \"{p1}\") := P10.Certs.P1.cert\n"
+        "end P10.Certs.Hijack\n"))
+
+
+def _inject_module(r):
+    n1 = _sha(r, "vectors/negative/n1_determined.json")
+    _write_cert(r, "Inject", (
+        "import P10.Bound\nimport Lean\nopen Lean Elab Command Term Meta\n\n"
+        "run_cmd liftTermElabM do\n"
+        f"  let stx ← `(P10.Bound (filebytes% \"vectors/negative/n1_determined.json\") (hex% \"{n1}\"))\n"
+        "  let ty ← Term.elabType stx\n  let ty ← instantiateMVars ty\n"
+        "  withOptions (·.setBool `debug.skipKernelTC true) <|\n"
+        "    addDecl (.thmDecl { name := `P10.Certs.Inject.cert, levelParams := [], type := ty, "
+        "value := mkConst ``True.intro })\n"))
+
+
+def case_meta_full(builder, vec, name):
+    """Full-pipeline variant: the attacker also builds/signs a statement for `vec` citing the module."""
+    def go(r):
+        builder(r)
+        subprocess.run(["lake", "build", f"P10.Certs.{name}"], cwd=r, capture_output=True)
+        rc, out = tool(r, "statement", vec, "--module", f"P10.Certs.{name}", "--theorem",
+                       f"P10.Certs.{name}.cert", "--cert-file", f"P10/Certs/{name}.lean",
+                       "--out", "vectors/out/p1", "--skip-lean")
+        assert rc == 0, out
+    return go
+
+
+def case_meta_direct(builder, name):
+    """Direct variant: the module is built and the checker-owned check is invoked directly, BYPASSING the
+    source-policy lint, to prove that the architecture (precompiled target + kernel replay) is a
+    boundary in its own right."""
+    def go(r):
+        builder(r)
+        rc = subprocess.run(["lake", "build", f"P10.Certs.{name}"], cwd=r, capture_output=True).returncode
+        assert rc == 0, f"attack module {name} must build for the direct test"
+    return go
+
+
+def case_unsafe_direct(body):
+    def go(r):
+        edit(r, CERTFILE, "theorem cert : P10.Bound bytes digest :=\n  P10.bound_of_check (by decide) (by decide)", body)
+        subprocess.run(["lake", "build", MODULE], cwd=r, capture_output=True)
+    return go
+
+
 CASES = [
     # (id, description, setup, pin?, expected verdict, [acceptable reason substrings])
     ("M1-profile-bytes", "profile snapshot bytes mutated", case_profile_bytes, True, "REJECT",
@@ -264,9 +354,9 @@ CASES = [
     ("M1-semantics-stale", "Lean semantics source mutated; old statement + certificate", case_semantics, True, "REJECT",
      ["committed VerifierManifest differs"]),
     ("M1-semantics-regen", "Lean semantics mutated; attacker regenerates manifest+statement (pinned manifest)",
-     case_semantics_regen, True, "REJECT", ["pinned"]),
-    ("M1-semantics-regen-nopin", "same, WITHOUT manifest pin: Lean kernel must still refuse",
-     case_semantics_regen, False, "REJECT", ["lake build failed", "Lean rejected"]),
+     case_semantics_regen, True, "REJECT", ["supplied pin"]),
+    ("M1-semantics-regen-selfpin", "same, attacker supplies THEIR OWN manifest digest as the pin: Lean must still refuse",
+     case_semantics_regen, "self", "REJECT", ["lake build failed", "Lean rejected"]),
     ("N5-claim-stale", "claim in instance bytes mutated (old statement)", inst_edit("claim", "firstBit"), True,
      "REJECT", ["instance digest mismatch"]),
     ("N5-claim-regen", "claim mutated, statement regenerated: certificate no longer checks",
@@ -294,8 +384,8 @@ CASES = [
     ("M-decoder-stale", "Lean decoder mutated (w0/w1 swapped); old statement", case_decoder_swap, True, "REJECT",
      ["committed VerifierManifest differs"]),
     ("M-decoder-regen", "decoder mutated, statement regenerated: certificate no longer checks",
-     case_decoder_swap_regen, True, "REJECT", ["pinned"]),
-    ("M-decoder-regen-nopin", "decoder mutated, regenerated, no pin: Lean refuses", case_decoder_swap_regen, False,
+     case_decoder_swap_regen, True, "REJECT", ["supplied pin"]),
+    ("M-decoder-regen-selfpin", "decoder mutated, regenerated, attacker-supplied pin: Lean refuses", case_decoder_swap_regen, "self",
      "REJECT", ["lake build failed", "Lean rejected"]),
     ("M33-toolchain-file", "lean-toolchain changed", case_toolchain_file, True, "REJECT",
      ["committed VerifierManifest differs"]),
@@ -304,7 +394,7 @@ CASES = [
     ("M33-lakefile", "lakefile.toml changed", case_lakefile, True, "REJECT",
      ["committed VerifierManifest differs"]),
     ("M33-lean-executable", "different lean executable with identical version string", case_fake_lean, True,
-     "REJECT", ["lean_toolchain_artifact_sha256", "toolchain artifact differs"]),
+     "REJECT", ["lean_toolchain_artifact_sha256", "toolchain artifact differs", "resolves a different lean"]),
     ("M35-verifier-digest", "statement verifier.manifest_sha256 != manifest", case_st(st_manifest_digest), True,
      "REJECT", ["statement verifier digest differs"]),
     ("M17-no-limitations", "predicate without limitations", case_st(st_drop_limitations), True, "REJECT",
@@ -317,17 +407,44 @@ CASES = [
      ["outcome must be"]),
     ("N8-stale-cert-new-profile", "profile changed and tree made consistent, OLD signed statement reused",
      case_stale_new_profile, True, "REJECT", ["stale certificate"]),
+    ("F1-honest-cert-outside-evidence", "F1: honest hatch-free certificate for evidence outside Eπ via a different pair",
+     case_f1_honest_cert("vectors/negative/m_outside_evidence.json", "⟨.secondBit, .outside, .w00, .w01⟩",
+                         ".outside", "ME"), "self", "REJECT", ["lake build failed"]),
+    ("F1-honest-cert-incompatible-witness", "F1: honest certificate although the NAMED witness w10 is incompatible",
+     case_f1_honest_cert("vectors/negative/n2_incompatible.json", "⟨.secondBit, .obs false none, .w01, .w10⟩",
+                         "eU", "N2c"), "self", "REJECT", ["lake build failed"]),
+    ("F2-macro-hijack-full", "F2: certificate module hijacks filebytes%/hex% (full pipeline, signed statement for n3)",
+     case_meta_full(_hijack_module, "vectors/negative/n3_same_value.json", "Hijack"), "self", "REJECT",
+     ["policy violation"]),
+    ("F2-macro-hijack-direct", "F2: same module, checker-owned check invoked DIRECTLY (lint bypassed): the precompiled "
+     "target must refuse", case_meta_direct(_hijack_module, "Hijack"), "direct", "REJECT",
+     ["Lean rejected the certificate", "mismatch"],
+     ("vectors/negative/n3_same_value.json", "P10.Certs.Hijack", "P10.Certs.Hijack.cert")),
+    ("F3-kernel-bypass-full", "F3: run_cmd + debug.skipKernelTC + addDecl of True.intro typed as Bound n1 (full pipeline)",
+     case_meta_full(_inject_module, "vectors/negative/n1_determined.json", "Inject"), "self", "REJECT",
+     ["policy violation"]),
+    ("F3-kernel-bypass-direct", "F3: same module, checker-owned check invoked DIRECTLY (lint bypassed): kernel replay must refuse",
+     case_meta_direct(_inject_module, "Inject"), "direct", "REJECT", ["leanchecker"],
+     ("vectors/negative/n1_determined.json", "P10.Certs.Inject", "P10.Certs.Inject.cert")),
+    ("cert-sorry-direct", "sorry certificate, checker invoked directly (lint bypassed)",
+     case_unsafe_direct("theorem cert : P10.Bound bytes digest := sorry"), "direct", "REJECT",
+     ["unexpected Lean output", "Lean rejected"], (VECTOR, MODULE, THEOREM)),
+    ("cert-native-decide-direct", "native_decide certificate, checker invoked directly (lint bypassed)",
+     case_unsafe_direct("theorem cert : P10.Bound bytes digest :=\n  P10.bound_of_check (by native_decide) (by decide)"),
+     "direct", "REJECT", ["unexpected Lean output", "Lean rejected", "leanchecker"], (VECTOR, MODULE, THEOREM)),
+    ("CONTROL-honest-direct", "positive control: the honest P1 certificate passes the direct checker-owned check",
+     lambda r: None, "direct", "PASS", [], (VECTOR, MODULE, THEOREM)),
     ("N8-statement-profile-digest", "statement profile digest altered", case_st(st_profile_digest), True,
      "REJECT", ["statement profile digest differs"]),
     ("cert-sorry-regen", "certificate replaced by `sorry`, statement regenerated",
-     certificate_replace("theorem cert : P10.Bound bytes digest := sorry"), False, "REJECT",
-     ["unexpected Lean output", "Lean rejected", "audit"]),
+     certificate_replace("theorem cert : P10.Bound bytes digest := sorry"), "self", "REJECT",
+     ["forbidden construct", "unexpected Lean output", "Lean rejected", "audit"]),
     ("cert-native-decide-regen", "certificate uses native_decide, statement regenerated",
-     certificate_replace("theorem cert : P10.Bound bytes digest :=\n  P10.bound_of_check (by native_decide) (by decide)"), False, "REJECT",
-     ["unexpected Lean output", "Lean rejected", "audit"]),
+     certificate_replace("theorem cert : P10.Bound bytes digest :=\n  P10.bound_of_check (by native_decide) (by decide)"), "self", "REJECT",
+     ["forbidden construct", "unexpected Lean output", "Lean rejected", "audit"]),
     ("cert-axiom-regen", "certificate replaced by an added axiom, statement regenerated",
-     certificate_replace("axiom evil : P10.Bound bytes digest\ntheorem cert : P10.Bound bytes digest := evil"), False, "REJECT",
-     ["unexpected Lean output", "Lean rejected", "audit"]),
+     certificate_replace("axiom evil : P10.Bound bytes digest\ntheorem cert : P10.Bound bytes digest := evil"), "self", "REJECT",
+     ["forbidden construct", "unexpected Lean output", "Lean rejected", "audit"]),
     ("forged-runtime-n3", "runtime signs NotDemonstrated for the same-value vector, attaching the P1 certificate",
      case_forged_runtime_n3, True, "REJECT", ["Lean rejected the certificate"]),
     ("forged-runtime-no-cert", "runtime signs NotDemonstrated citing a certificate that does not exist",
@@ -335,9 +452,12 @@ CASES = [
     ("runtime-other-semantics-old-cert", "runtime with different internal semantics attaches the old certificate",
      case_runtime_other_semantics_old_cert, True, "REJECT", ["committed VerifierManifest differs"]),
     ("INFO-benign-regen-pinned", "benign edit of a bound file, everything regenerated; verifier pinned to the "
-     "committed manifest", case_benign_edit_regen, True, "REJECT", ["pinned"]),
-    ("INFO-benign-regen-unpinned", "same WITHOUT the pin: accepted as a DIFFERENT (equivalent) verifier tree; "
-     "documents why the profile commits verifier_manifest_digest", case_benign_edit_regen, False, "PASS", []),
+     "committed manifest", case_benign_edit_regen, True, "REJECT", ["supplied pin"]),
+    ("INFO-benign-regen-selfpin", "same, but the attacker supplies THEIR OWN manifest digest as the pin: accepted as a "
+     "DIFFERENT (equivalent) verifier tree — a pin taken from the tree itself is NOT a trust anchor; the pin must "
+     "come from outside", case_benign_edit_regen, "self", "PASS", []),
+    ("F4-no-pin-HALT", "verify without any manifest pin: HALT, no verdict (a tree cannot vouch for itself)",
+     lambda r: None, None, "HALT", ["EXTERNAL verifier-manifest pin"]),
 ]
 
 
@@ -409,6 +529,52 @@ def env_pin_regression() -> list[str]:
     return fails
 
 
+def lint_regression() -> list[str]:
+    """Source-policy lint must catch the known evasions, including line-split option names."""
+    fails = []
+    lint = os.path.join(HERE, "lint_lean.py")
+    good_cert = read(ROOT, CERTFILE).decode()
+    cases = [
+        ("valid certificate module passes", "P10/Certs/G.lean", good_cert, 0),
+        ("line-split debug option", "P10/X.lean", "set_option\n  debug.skipKernelTC true\n", 1),
+        ("setBool on options", "P10/X.lean", "def x := opts.setBool `debug.skipKernelTC true\n", 1),
+        ("run_cmd outside allowlist", "P10/X.lean", "run_cmd pure ()\n", 1),
+        ("macro_rules in certificate", "P10/Certs/H.lean", "import P10.Bound\nmacro_rules\n  | `(x) => `(y)\n", 1),
+        ("import Lean in certificate", "P10/Certs/H.lean", "import Lean\n", 1),
+        ("attribute outside allowlist", "P10/X.lean", "attribute [simp] Nat.add_zero\n", 1),
+        ("attribute on certificate theorem", "P10/Certs/H.lean", "import P10.Bound\n@[simp] theorem t : True := trivial\n", 1),
+        ("non-maxRecDepth option", "P10/X.lean", "set_option maxHeartbeats 0\n", 1),
+        ("elab outside allowlist", "P10/X.lean", "elab \"foo%\" : term => pure default\n", 1),
+        ("instance in certificate", "P10/Certs/H.lean", "import P10.Bound\ninstance : Inhabited Nat := ⟨0⟩\n", 1),
+    ]
+    for name, rel, text, want in cases:
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(text)
+            rc = subprocess.run([sys.executable, lint, path], capture_output=True).returncode
+        if rc != want:
+            fails.append(f"lint case '{name}': expected exit {want}, got {rc}")
+    return fails
+
+
+def pin_policy_regression() -> list[str]:
+    """verify.sh must refuse to run without an external pin (and reject a malformed one)."""
+    fails = []
+    base = {k: v for k, v in os.environ.items() if not k.startswith("P10_")}
+    for label, extra, needle in (("no pin", {}, "external pin required"),
+                                 ("malformed pin", {"P10_EXPECT_MANIFEST_SHA256": "zz"}, "malformed manifest pin")):
+        env = dict(base)
+        env.update(extra)
+        p = subprocess.run(["bash", os.path.join(HERE, "verify.sh")], cwd=ROOT, env=env,
+                           capture_output=True, timeout=120)
+        out = (p.stdout + p.stderr).decode()
+        if p.returncode == 0 or needle not in out:
+            fails.append(f"verify.sh with {label}: expected failure containing {needle!r}, got exit {p.returncode}")
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true")
@@ -416,17 +582,19 @@ def main():
     a = ap.parse_args()
 
     # pristine baseline must PASS and provides the pinned manifest digest
-    rc, out = tool(ROOT, "verify", COSE)
+    pin = sha256_file(os.path.join(ROOT, p10tool.MANIFEST_PATH))
+    rc, out = tool(ROOT, "verify", COSE, "--manifest-digest", pin)
     if rc != 0:
         print("BASELINE DID NOT PASS:\n" + out)
         return 1
-    pin = sha256_file(os.path.join(ROOT, p10tool.MANIFEST_PATH))
     print(f"baseline PASS; pinned manifest digest {pin}")
 
     total = ok = 0
     failures = []
     t0 = time.time()
-    for cid, desc, setup, use_pin, expected, reasons in CASES:
+    for case in CASES:
+        cid, desc, setup, use_pin, expected, reasons = case[:6]
+        direct = case[6] if len(case) > 6 else None
         if a.only and a.only not in cid:
             continue
         total += 1
@@ -436,10 +604,19 @@ def main():
         try:
             env = None
             setup(dst)
-            args = ["verify", COSE] + (["--manifest-digest", pin] if use_pin else [])
-            if cid == "M33-lean-executable":
-                env = {"PATH": os.path.join(dst, ".fakebin") + os.pathsep + os.environ["PATH"]}
-            rc, out = tool(dst, *args, env=env)
+            if direct is not None:
+                vec, mod, thm = direct
+                rc, out = tool(dst, "lean-check", vec, _sha(dst, vec), mod, thm)
+            else:
+                args = ["verify", COSE]
+                if use_pin is True:
+                    args += ["--manifest-digest", pin]          # the pristine, externally obtained pin
+                elif use_pin == "self":
+                    # attacker-supplied pin: the digest of the attacker's own manifest
+                    args += ["--manifest-digest", _sha(dst, p10tool.MANIFEST_PATH)]
+                if cid == "M33-lean-executable":
+                    env = {"PATH": os.path.join(dst, ".fakebin") + os.pathsep + os.environ["PATH"]}
+                rc, out = tool(dst, *args, env=env)
             want = EXPECT_CODE[expected]
             reason_ok = (not reasons) or any(r in out for r in reasons)
             good = rc == want and reason_ok
@@ -447,8 +624,8 @@ def main():
             if good:
                 ok += 1
             else:
-                failures.append((cid, rc, out[-600:]))
-            first = [l for l in out.splitlines() if l.startswith("VERDICT")]
+                failures.append((cid, rc, out[-900:]))
+            first = [l for l in out.splitlines() if l.startswith("VERDICT")] or out.strip().splitlines()[:1]
             print(f"[{tag}] {cid}: expected {expected}, got exit {rc}; {first[0][:150] if first else ''}")
         finally:
             if not a.keep:
@@ -463,6 +640,15 @@ def main():
         ok += 1
         print("[PASS] differential-decoder: Python and Lean decoders induce the same partition on 14 vectors")
 
+    for label, fn in (("lint-regression", lint_regression), ("pin-policy-regression", pin_policy_regression)):
+        f_ = fn()
+        total += 1
+        if f_:
+            failures.append((label, 0, "; ".join(f_)))
+            print(f"[FAIL] {label}:", f_)
+        else:
+            ok += 1
+            print(f"[PASS] {label}")
     e_fails = env_pin_regression()
     total += 1
     if e_fails:

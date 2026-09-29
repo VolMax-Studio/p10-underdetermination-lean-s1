@@ -15,7 +15,7 @@ ratified profile semantics (§2.1, §2.2)
   → machine-readable statement               in-toto Statement v1, experimental predicate
   → SCITT-shaped Signed Statement            COSE_Sign1, TEST key (registration NOT demonstrated)
   → third-party reproducible verifier        scripts/p10tool.py verify
-  → negative mutation suite                  scripts/mutation_suite.py (38 mutation cases + Python↔Lean decoder differential + Python-pin regression)
+  → negative mutation suite                  scripts/mutation_suite.py (mutation cases + Python↔Lean decoder differential + Python-pin, lint and pin-policy regressions)
   → CI / verify.sh / audits / hashes         scripts/verify.sh, .github/workflows/verify.yml
 ```
 
@@ -23,16 +23,19 @@ ratified profile semantics (§2.1, §2.2)
 
 S1 answers one question: *can the ratified formal definitions be implemented faithfully in Lean, and a concrete
 witness certificate be kernel-checked* — and then goes further: the proposition proved by the kernel is
-**computed from the committed bytes** (`P10.Bound (filebytes% "<file>") (hex% "<sha256>")`), so the statement
-cannot name one proposition while the proof concerns another.
+**computed from the committed bytes** and is the profile's exact `CertificateTargetV0` for the evidence, claim and
+witnesses NAMED in those bytes (`P10.Bound (filebytes% "<file>") (hex% "<sha256>")`), and the verifier compiles that
+target itself, in a separate process, before the certificate is loaded.
 
 ## Exact claim
 
 For the committed S1 instance `vectors/p1.instance.json` (SHA-256 `62353069…e824`), the Lean kernel accepts
-`P10.Certs.P1.cert : P10.Bound bytes digest`, i.e. (a) the bytes have that SHA-256 (kernel-computed), (b) they decode
-canonically (strict decoder, `encode (decode b) = b`) to an instance, and (c) that instance is `Underdeterminedπ` in the
-frozen S1 toy profile: two worlds in `Wπ`, both `Compatibleπ` with the same evidence, with different `Evalπ` for the same
-claim. All audited declarations depend on **no axioms**.
+`P10.Certs.P1.cert : P10.Bound bytes digest`, i.e. (a) the bytes have that SHA-256 (kernel-computed value of an
+implementation that is vector- and `hashlib`-tested, not proved correct), (b) they decode canonically (strict decoder,
+`encode (decode b) = b`) to an instance, and (c) for THAT instance's evidence `e`, claim `c` and NAMED witnesses `w₀`, `w₁`
+the profile's `CertificateTargetV0(π,e,c,w₀,w₁)` holds in the frozen S1 toy profile: `e ∈ Eπ`, `w₀,w₁ ∈ Wπ`, both
+`Compatibleπ` with `e`, and `Evalπ(c,w₀) ≠ Evalπ(c,w₁)`. (Draft PR #1 asserted only the weaker `Underdeterminedπ(e,c)`,
+"some pair exists"; gate finding F1 — fixed in PR #2.) All audited declarations depend on **no axioms**.
 
 ## Non-claims
 
@@ -59,7 +62,8 @@ not implemented. A disagreement between Lean and the profile is a bug in this re
 ## TCB / threat boundary (details: `THREAT_MODEL.md`)
 
 Kernel-checked: definitions, theorems, decoder, canonical round trip, SHA-256 evaluation, certificate. Trusted: Lean
-kernel and the exact toolchain; the elaboration-time byte elaborators in `P10/Bytes.lean`; `scripts/p10tool.py`
+kernel and the exact toolchain (`lean`, `lake`, `leanchecker`, `libleanshared.so`, all digest-pinned); the
+elaboration-time byte elaborators in `P10/Bytes.lean` (the only metaprogram allowed; enforced by lint); `scripts/p10tool.py`
 (file hashing of the profile/sources, JCS of the statement, COSE verification, orchestration); the SHA-256 in
 `P10/Sha256.lean` is checked against FIPS vectors in the kernel and against `hashlib`, not proved correct.
 
@@ -79,24 +83,31 @@ from verifier-time recomputation (profile §5, §6); nothing here establishes de
 python3 -m venv .venv && .venv/bin/pip install -r requirements.lock
 export PATH="$PWD/.venv/bin:$PATH"
 eval "$(scripts/install_toolchain.sh)"       # pinned conda-forge Lean 4.33.0, package SHA-256 checked
-./scripts/verify.sh                          # canonical, fail-closed, includes the mutation suite
+P10_EXPECT_MANIFEST_SHA256=<manifest digest obtained OUT OF BAND> ./scripts/verify.sh   # canonical, fail-closed
 ```
 
-`P10_SKIP_MUTATIONS=1 ./scripts/verify.sh` skips the mutation suite (faster, not canonical).
+**The verifier-manifest pin is the only root of trust and must come from outside the tree.** Without
+`P10_EXPECT_MANIFEST_SHA256` (or `--manifest-digest` for `p10tool.py verify`) verification HALTs with no verdict. A tree cannot
+vouch for itself: an adversary who controls the whole tree can rewrite the manifest, the in-tree pin file, the statement
+and re-sign with the public TEST key, and the result is self-consistent. `P10_ALLOW_INTREE_PIN=1 ./scripts/verify.sh` reads
+`profile/VERIFIER_MANIFEST_PIN.txt` and prints a warning: it proves self-consistency only. Anchoring the pin externally
+(profile `InstanceCommitment`, registration) is S2/S3 work and is NOT demonstrated here.
+`P10_SKIP_MUTATIONS=1` skips the mutation suite (faster, not canonical).
 `verify.sh` checks that EVERY package pinned in `requirements.lock` is installed at exactly the pinned version
 (`scripts/check_env.py`, no exemptions; regression-tested in the mutation suite). It never runs `lake update` and never uses the network. It also: checks `SHA256SUMS` and the exact file set before
 and after the build, checks the profile digest, forbids `sorry`/`admit`/`native_decide`/`axiom`/`unsafe`/… in Lean
 sources (comment-aware lint), clean-builds with warnings as errors, audits `#print axioms` for every exported theorem,
-runs positive/must-fail/differential tests, verifies the signed test vector with the third-party verifier
-(pinned to `profile/VERIFIER_MANIFEST_PIN.txt`), runs the mutation suite, and prints artifact digests.
+replays every module through the kernel with `leanchecker`, runs positive/must-fail/differential tests, verifies the
+signed test vector with the third-party verifier (checker-owned target precompiled in a separate process, kernel replay,
+exact-type check of the checked theorem), runs the mutation suite, and prints artifact digests.
 
 ### Expected PASS output (abridged)
 
 ```
-axiom audit: 49/49 declarations axiom-free
+axiom audit: 54/54 declarations axiom-free
 run_tests: 23 passed, 0 failed
 VERDICT: PASS
-mutation suite: 40/40 as expected
+mutation suite: all cases as expected (see script output for the count)
 VERIFY PASS
 ```
 
@@ -112,7 +123,7 @@ VERIFY PASS
 | `vectors/` | committed instance bytes, negative vectors, signed statement (`vectors/out/`) |
 | `manifest/VerifierManifestS1.json` | toolchain/source/olean/policy digests (canonical JSON) |
 | `profile/` | normative snapshot, `IMPLEMENTATION_BINDING.md`, axiom policy, pins |
-| `scripts/` | verifier, mutation suite, tests, lint, toolchain installer, regeneration |
+| `scripts/` | verifier, mutation suite, tests, lint, `CheckModule.lean` (olean type check), toolchain installer, regeneration |
 | `THREAT_MODEL.md`, `TEST_VECTORS.md`, `RELATED_WORK.md`, `RELEASE_CHECKLIST.md` | documentation |
 
 ## Measured feasibility (this environment: 4 vCPU, 15 GB)

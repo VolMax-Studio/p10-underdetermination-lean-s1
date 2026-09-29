@@ -181,6 +181,13 @@ theorem n2_incompatible_rejected :
   have : compatB eU World.w10 = true := h.2.2.2.1
   exact absurd this (by decide)
 
+/-- **N2, in the argument order of the wire vector** (`w0 = w01`, `w1 = w10`). -/
+theorem n2_vector_target_refuted :
+    ¬ CertificateTargetV0 profile eU c0 .w01 .w10 := by
+  intro h
+  have : compatB eU World.w10 = true := h.2.2.2.2.1
+  exact absurd this (by decide)
+
 /-- **N2 (second witness).** Symmetric case. -/
 theorem n2_incompatible_rejected' :
     ¬ CertificateTargetV0 profile eU c0 .w00 .w11 := by

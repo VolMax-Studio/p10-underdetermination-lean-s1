@@ -250,8 +250,10 @@ theorem decode_encode (i : Instance) : decode (encode i) = some i := by
 
 `Holds b` is the proposition a wire statement asserts, defined ONLY from the bytes:
 `b` must decode, must be the canonical encoding of what it decodes to (unique normal
-form, profile §2.7), and the decoded instance must be `Underdeterminedπ` under the frozen
-S1 profile with the profile's own membership predicates. -/
+form, profile §2.7), and the decoded instance must satisfy the profile's
+`CertificateTargetV0(π, e, c, w₀, w₁)` (§2.2) for the evidence `e`, claim `c` AND the
+witnesses `w₀`, `w₁` NAMED IN THE BYTES. (An earlier draft asserted only `Underdeterminedπ(e,c)`,
+i.e. "some pair exists"; that was weaker than §2.2 / M34 and is fixed here.) -/
 
 /-- Byte-list equality by `Nat.beq` (used instead of `==` so the soundness proof
 needs no `LawfulBEq` machinery). -/
@@ -280,7 +282,7 @@ theorem listEq_sound : ∀ {a b : List Nat}, listEq a b = true → a = b
 
 /-- Proposition asserted for a decoded instance `o` of the bytes `b`. -/
 def holdsOpt (b : List Nat) : Option Instance → Prop
-  | some i => encode i = b ∧ Underdetermined profile i.evidence i.claim
+  | some i => encode i = b ∧ CertificateTargetV0 profile i.evidence i.claim i.w0 i.w1
   | none => False
 
 /-- Checker on a decoded instance: canonical form and the `CertificateTargetV0`
@@ -299,21 +301,31 @@ theorem holdsOpt_of_checkOpt (b : List Nat) :
     ∀ (o : Option Instance), checkOpt b o = true → holdsOpt b o
   | none, h => nomatch h
   | some _, h =>
-    ⟨listEq_sound (and_split h).1,
-     certificate_sound (UnderdeterminationCertificate.ofTarget
-       (checkTarget_sound (and_split h).2))⟩
+    ⟨listEq_sound (and_split h).1, checkTarget_sound (and_split h).2⟩
 
 /-- Soundness of the checker: `check b = true → Holds b`. -/
 theorem holds_of_check {b : List Nat} (h : check b = true) : Holds b :=
   holdsOpt_of_checkOpt b (decode b) h
 
-/-- `Holds b` is exactly (canonical form ∧ `Underdetermined` for the *decoded
-instance*); no other proposition is ever proved by a vector certificate. -/
+/-- `Holds b` is exactly (canonical form ∧ `CertificateTargetV0` for the *decoded instance,
+including its named witnesses*); no other proposition is ever proved by a vector certificate. -/
 theorem holds_iff {b : List Nat} {i : Instance} (h : decode b = some i) :
-    Holds b ↔ (encode i = b ∧ Underdetermined profile i.evidence i.claim) :=
+    Holds b ↔ (encode i = b ∧ CertificateTargetV0 profile i.evidence i.claim i.w0 i.w1) :=
   Eq.subst (motive := fun o => holdsOpt b o ↔
-      (encode i = b ∧ Underdetermined profile i.evidence i.claim))
+      (encode i = b ∧ CertificateTargetV0 profile i.evidence i.claim i.w0 i.w1))
     h.symm Iff.rfl
+
+/-- What a `Holds` proof yields for the decoded instance: `Underdeterminedπ(e,c)`. -/
+theorem holds_underdetermined {b : List Nat} {i : Instance} (h : decode b = some i)
+    (hh : Holds b) : Underdetermined profile i.evidence i.claim :=
+  ((holds_iff h).1 hh).2.underdetermined
+
+/-- Proposition-level rejection: if the decoded instance's NAMED witnesses do not form a
+`CertificateTargetV0` then `Holds b` is false — whatever other pair might exist for the
+same evidence and claim (kill-test for the "some other good pair" weakening, M34). -/
+theorem not_holds_of_not_target {b : List Nat} {i : Instance} (h : decode b = some i)
+    (hn : ¬ CertificateTargetV0 profile i.evidence i.claim i.w0 i.w1) : ¬ Holds b :=
+  fun hh => hn ((holds_iff h).1 hh).2
 
 /-- Undecodable bytes never satisfy `Holds`. -/
 theorem not_holds_of_decode_none {b : List Nat} (h : decode b = none) : ¬ Holds b :=

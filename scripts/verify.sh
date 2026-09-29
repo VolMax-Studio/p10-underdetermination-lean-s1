@@ -15,7 +15,23 @@ step() { printf '\n==> %s\n' "$*"; }
 die()  { printf 'VERIFY FAIL: %s\n' "$*" >&2; exit 1; }
 
 require() { command -v "$1" >/dev/null 2>&1 || die "required tool missing: $1"; }
-for t in lean lake python3 sha256sum grep sort find; do require "$t"; done
+for t in lean lake leanchecker python3 sha256sum grep sort find; do require "$t"; done
+
+step "external verifier-manifest pin (root of trust)"
+# The pin is the only anchor for the verifier tree: a tree cannot vouch for itself. It MUST come from outside
+# the tree (e.g. the profile InstanceCommitment / an out-of-band publication of the manifest digest).
+#   canonical:            P10_EXPECT_MANIFEST_SHA256=<sha256 obtained out of band> ./scripts/verify.sh
+#   self-consistency run: P10_ALLOW_INTREE_PIN=1 ./scripts/verify.sh   (reads profile/VERIFIER_MANIFEST_PIN.txt)
+if [[ -n "${P10_EXPECT_MANIFEST_SHA256:-}" ]]; then
+  pin="$P10_EXPECT_MANIFEST_SHA256"
+  echo "  using the externally supplied pin"
+elif [[ "${P10_ALLOW_INTREE_PIN:-0}" == "1" ]]; then
+  pin="$(tr -d '\n' < profile/VERIFIER_MANIFEST_PIN.txt)"
+  echo "  WARNING: in-tree pin — this run proves self-consistency only; it is NOT an external trust anchor"
+else
+  die "external pin required: set P10_EXPECT_MANIFEST_SHA256=<sha256 of manifest/VerifierManifestS1.json obtained out of band> (or P10_ALLOW_INTREE_PIN=1 for a self-consistency run)"
+fi
+[[ "$pin" =~ ^[0-9a-f]{64}$ ]] || die "malformed manifest pin"
 
 step "python environment: every package pinned in requirements.lock must match exactly"
 python3 scripts/check_env.py requirements.lock || die "python environment differs from requirements.lock"
@@ -56,13 +72,17 @@ lean --version | grep -q "version 4.33.0" || die "lean is not 4.33.0"
 [[ ! -e lake-manifest.json ]] || python3 -c "import json;m=json.load(open('lake-manifest.json'));assert m['packages']==[],'lake-manifest has packages'" \
   || die "lake-manifest.json must list no dependencies (frozen, no Mathlib)"
 
-step "forbidden constructs in Lean sources (sorry, admit, native_decide, axiom, unsafe, ...)"
-python3 scripts/lint_lean.py P10 P10.lean tests || die "forbidden construct in Lean sources"
+step "Lean source policy (escape hatches, metaprogramming allowlist, strict certificate modules)"
+python3 scripts/lint_lean.py P10 P10.lean tests || die "Lean source policy violation"
+
 
 step "clean build (no lake update; warnings are errors)"
 rm -rf .lake/build
 lake build --wfail
 lake build --wfail >/dev/null   # idempotence
+
+step "kernel replay: leanchecker over every module of the P10 library (not just #print axioms)"
+lake env leanchecker P10 || die "leanchecker replay failed"
 
 step "axiom audit (#print axioms for every exported theorem)"
 audit_out="$(lake env lean P10/AxiomAudit.lean)"
@@ -78,7 +98,6 @@ step "Lean test suite (positive, must-fail, sha256 differential)"
 python3 scripts/run_tests.py
 
 step "third-party verification of the S1 test vector (checker-owned proposition, TEST signature)"
-pin="$(tr -d '\n' < profile/VERIFIER_MANIFEST_PIN.txt)"
 python3 scripts/p10tool.py verify vectors/out/p1.cose --manifest-digest "$pin" | tail -4
 python3 scripts/cose_crosscheck.py vectors/out/p1.cose
 

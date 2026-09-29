@@ -27,9 +27,27 @@ theorem m3_wire_rejected : check m3 = false := by decide
 
 /-- Evidence outside Eπ. -/
 theorem mE_wire_rejected : check mE = false := by decide
+
+/-! Proposition-level rejection (F1 regression). Each vector is refuted for the witnesses NAMED IN
+ITS BYTES, even though `Underdetermined` still holds for the same evidence/claim through a
+DIFFERENT pair (`w00`,`w01`). -/
+theorem n2_decodes : decode n2 = some ⟨.secondBit, .obs false none, .w01, .w10⟩ := by decide
+theorem m3_decodes : decode m3 = some ⟨.secondBit, .obs false none, .w00, .wOut⟩ := by decide
+theorem mE_decodes : decode mE = some ⟨.secondBit, .outside, .w00, .w01⟩ := by decide
+
+theorem n2_not_holds : ¬ Holds n2 := not_holds_of_not_target n2_decodes n2_vector_target_refuted
+theorem m3_not_holds : ¬ Holds m3 := not_holds_of_not_target m3_decodes m3_outside_world_rejected
+theorem mE_not_holds : ¬ Holds mE :=
+  not_holds_of_not_target mE_decodes (outside_evidence_rejected _ _)
+
+/-- ... and the weaker fact is still true, which is exactly why `Holds` must not be weaker. -/
+theorem weaker_fact_still_true : Underdetermined profile eU c0 := p1_pass
 theorem mE_target_refuted (w0 w1 : World) :
     ¬ CertificateTargetV0 profile Evidence.outside c0 w0 w1 := outside_evidence_rejected w0 w1
 
 #print axioms n2_wire_rejected
 #print axioms m3_wire_rejected
 #print axioms mE_wire_rejected
+#print axioms n2_not_holds
+#print axioms m3_not_holds
+#print axioms mE_not_holds

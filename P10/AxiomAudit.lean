@@ -22,6 +22,7 @@ number of audited declarations differs from the number of `#print axioms` lines 
 #print axioms P10.no_certificate_does_not_imply_determinate
 #print axioms P10.FormallyUnderdeterminationCapable.profileAdmissible
 #print axioms P10.worlds_distinct_of_values_differ
+#print axioms P10.CertificateTargetV0.underdetermined
 #print axioms P10.UnderdeterminationCertificate.target
 #print axioms P10.UnderdeterminationCertificate.ofTarget
 #print axioms P10.S1.checkTarget_sound
@@ -34,6 +35,7 @@ number of audited declarations differs from the number of `#print axioms` lines 
 #print axioms P10.S1.n1_determined_no_target
 #print axioms P10.S1.n2_incompatible_rejected
 #print axioms P10.S1.n2_incompatible_rejected'
+#print axioms P10.S1.n2_vector_target_refuted
 #print axioms P10.S1.n3_same_value_rejected
 #print axioms P10.S1.n3_witnesses_compatible_and_distinct
 #print axioms P10.S1.eU_determinate_for_firstBit
@@ -51,6 +53,8 @@ number of audited declarations differs from the number of `#print axioms` lines 
 #print axioms P10.Wire.holds_of_check
 #print axioms P10.Wire.holds_iff
 #print axioms P10.Wire.not_holds_of_decode_none
+#print axioms P10.Wire.holds_underdetermined
+#print axioms P10.Wire.not_holds_of_not_target
 #print axioms P10.Sha256.sha256
 #print axioms P10.bound_of_check
 #print axioms P10.Bound.holds
@@ -60,4 +64,5 @@ number of audited declarations differs from the number of `#print axioms` lines 
 #print axioms P10.Certs.P1.decoded
 #print axioms P10.Certs.P1.canonical
 #print axioms P10.Certs.P1.cert
+#print axioms P10.Certs.P1.target
 #print axioms P10.Certs.P1.underdetermined
