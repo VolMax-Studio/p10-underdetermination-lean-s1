@@ -15,7 +15,7 @@ ratified profile semantics (§2.1, §2.2)
   → machine-readable statement               in-toto Statement v1, experimental predicate
   → SCITT-shaped Signed Statement            COSE_Sign1, TEST key (registration NOT demonstrated)
   → third-party reproducible verifier        scripts/p10tool.py verify
-  → negative mutation suite                  scripts/mutation_suite.py (38 mutation cases + 1 Python↔Lean decoder differential)
+  → negative mutation suite                  scripts/mutation_suite.py (38 mutation cases + Python↔Lean decoder differential + Python-pin regression)
   → CI / verify.sh / audits / hashes         scripts/verify.sh, .github/workflows/verify.yml
 ```
 
@@ -83,7 +83,8 @@ eval "$(scripts/install_toolchain.sh)"       # pinned conda-forge Lean 4.33.0, p
 ```
 
 `P10_SKIP_MUTATIONS=1 ./scripts/verify.sh` skips the mutation suite (faster, not canonical).
-`verify.sh` never runs `lake update` and never uses the network. It: checks `SHA256SUMS` and the exact file set before
+`verify.sh` checks that EVERY package pinned in `requirements.lock` is installed at exactly the pinned version
+(`scripts/check_env.py`, no exemptions; regression-tested in the mutation suite). It never runs `lake update` and never uses the network. It also: checks `SHA256SUMS` and the exact file set before
 and after the build, checks the profile digest, forbids `sorry`/`admit`/`native_decide`/`axiom`/`unsafe`/… in Lean
 sources (comment-aware lint), clean-builds with warnings as errors, audits `#print axioms` for every exported theorem,
 runs positive/must-fail/differential tests, verifies the signed test vector with the third-party verifier
@@ -95,7 +96,7 @@ runs positive/must-fail/differential tests, verifies the signed test vector with
 axiom audit: 49/49 declarations axiom-free
 run_tests: 23 passed, 0 failed
 VERDICT: PASS
-mutation suite: 39/39 as expected
+mutation suite: 40/40 as expected
 VERIFY PASS
 ```
 
@@ -123,5 +124,6 @@ seconds; no `native_decide` was needed.
 
 Toy profile; wire codec subset; per-vector (not universal) canonical-form *uniqueness on the accept side* (universal
 `decode ∘ encode = id` is proved); SHA-256 not proved correct in Lean; profile-digest and source-digest bindings are
-external (hashing script in TCB); Lean 4.33.0 rather than the profile kernel's 4.34.0; CI actions are referenced by
-tag, not commit SHA; no independent review.
+external (hashing script in TCB); Lean 4.33.0 rather than the profile kernel's 4.34.0; no independent review. CI actions are pinned to the commit SHAs that the `v4` tags resolved to in CI run #2
+(`actions/checkout` 11d5960a…, `actions/upload-artifact` ea165f8d…; read from that run's log, not re-checked against the
+action repositories).

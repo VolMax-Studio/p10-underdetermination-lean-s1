@@ -37,9 +37,9 @@ Bytes: `{"claim":"secondBit","evidence":"f0s_","kind":"p10-s1-instance-v0","prof
 
 | artifact | SHA-256 |
 |---|---|
-| `vectors/out/p1.statement.json` | `29084dfc20cdb49ea99b9573c7fc98487ec1b4a33a87e2395dd72df05f745c4f` |
-| `vectors/out/p1.cose` | `4a888fea33e4dbfd768400086f9827422484e57955ab0f0abe6bdf0290bb2f92` |
-| `manifest/VerifierManifestS1.json` | `8f3243f1058cc4b4caaddbd5fedaeeb4906e32dbfc288f0949aa6a6f0450174a` |
+| `vectors/out/p1.statement.json` | `33c6caa62c675932ae9e1bb117d273fb57a0b888a46572703091c6efe2e349b3` |
+| `vectors/out/p1.cose` | `b49dacc2fd72dc4a4495f50d4a7e153961c6183e6636700d7cafdecfd6d4cfb9` |
+| `manifest/VerifierManifestS1.json` | `18a591ecac0df4f315336439cf48de78c7c6c11869f1122b9fd0d7d759e536b8` |
 
 Bound fields (all recomputed and matched by `scripts/p10tool.py verify`):
 
@@ -64,8 +64,8 @@ Bound fields (all recomputed and matched by `scripts/p10tool.py verify`):
 | libleanshared.so digest | `0df64f2384d4152ccb675b2e6b9ad4769d71c8ce168f6e2c24324df0db897c4d` |
 | Mathlib | `not used (no dependencies; lake-manifest.json has an empty package list)` |
 | lake-manifest.json digest | `b8605f290786c5df95601f197c0718e9daef299745626a24cdb273fd68a7e5d5` |
-| verifier manifest digest (pinned in `profile/VERIFIER_MANIFEST_PIN.txt`) | `8f3243f1058cc4b4caaddbd5fedaeeb4906e32dbfc288f0949aa6a6f0450174a` |
-| verifier scripts digest | `6a77d0796d583802221118d2236637dd8187becfa56f282ebd893449c7ebc2b3` |
+| verifier manifest digest (pinned in `profile/VERIFIER_MANIFEST_PIN.txt`) | `18a591ecac0df4f315336439cf48de78c7c6c11869f1122b9fd0d7d759e536b8` |
+| verifier scripts digest | `9d3bbed22bc1406e83cd62e7902874e58bd83d10ef09706a5b01d6a19efd5aa8` |
 | limitations digest | `091116f19a63f244aaf119451a540b50b385deb6e40a9de9058ee2f46f43fd1c` |
 | proof/check mode | `Lean kernel type-check of P10.Bound (kernel-evaluated SHA-256 + decoder + checker via `decide`); native_decide: not used; custom axioms: none; sorry: none` |
 

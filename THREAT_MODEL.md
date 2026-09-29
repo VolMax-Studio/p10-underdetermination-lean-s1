@@ -13,7 +13,7 @@ is backed by a Lean kernel proof of exactly `P10.Bound B digest(B)` under the se
 | `P10/Sha256.lean` | hashing inside the kernel; **not proved correct** | FIPS 180-4 vectors checked by the kernel; differential test vs `hashlib` on 17 lengths incl. padding boundaries; zero axioms |
 | `scripts/p10tool.py` | SHA-256 of profile/source files, JCS of the statement, COSE verification (pycose), orchestration, checker-owned Lean file generation | hashed in the manifest (`verifier_scripts_digest`); mutation suite exercises it; TEST-key-only acceptance |
 | `scripts/lint_lean.py`, `run_tests.py`, `verify.sh` | gate logic | hashed in the manifest |
-| Python libs (`pycose`, `cbor2`, `cryptography`) | COSE decoding/signature | versions pinned in `requirements.lock` (`verify.sh` checks pycose/cbor2) |
+| Python libs (`pycose`, `cbor2`, `cryptography`) | COSE decoding/signature | all versions pinned in `requirements.lock`; `scripts/check_env.py` (run by `verify.sh`) requires every pinned package to match exactly; mutation suite proves mutated/missing/unpinned pins are rejected |
 | The profile text | normative | byte-identical snapshot; digest checked in three places (script constant, Lean `specTok`, statement) |
 
 Not in the TCB: the Python decoder mirror (differential-tested against the Lean decoder, never authoritative); any runtime.

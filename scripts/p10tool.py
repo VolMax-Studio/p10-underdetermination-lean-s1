@@ -51,7 +51,7 @@ TOOLCHAIN_FILES = ["lean-toolchain", "lakefile.toml", "lake-manifest.json"]
 POLICY_FILES = ["profile/AXIOM_POLICY.md", "profile/ACCEPTANCE_COMMAND.txt"]
 VERIFIER_FILES = ["scripts/p10tool.py", "scripts/verify.sh", "scripts/mutation_suite.py",
                   "scripts/run_tests.py", "scripts/lint_lean.py", "scripts/install_toolchain.sh",
-                  "scripts/cose_crosscheck.py", "scripts/gen_binding.py", "scripts/gen_testvectors_md.py",
+                  "scripts/cose_crosscheck.py", "scripts/check_env.py", "scripts/gen_binding.py", "scripts/gen_testvectors_md.py",
                   "scripts/gen_vectors.py", "scripts/regen.sh", "scripts/update_sums.sh"]
 AUDIT_FILE = "P10/AxiomAudit.lean"
 MANIFEST_PATH = "manifest/VerifierManifestS1.json"

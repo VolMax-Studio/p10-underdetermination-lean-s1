@@ -366,6 +366,49 @@ def differential_decoder(root) -> list[str]:
     return fails
 
 
+def env_pin_regression() -> list[str]:
+    """A mismatched Python TCB dependency must never pass the environment check: mutate the lock file
+    (one package at a time, for EVERY pinned package including cryptography), add a missing package and
+    an unpinned line; every one must make scripts/check_env.py fail and name the culprit. Also assert
+    that verify.sh delegates to check_env.py and carries no per-package exemption."""
+    fails = []
+    script = os.path.join(HERE, "check_env.py")
+    lock = os.path.join(ROOT, "requirements.lock")
+    pins = [l.strip() for l in open(lock) if "==" in l]
+
+    def run_lock(text):
+        with tempfile.NamedTemporaryFile("w", suffix=".lock", delete=False) as f:
+            f.write(text)
+        try:
+            p = subprocess.run([sys.executable, script, f.name], capture_output=True)
+        finally:
+            os.unlink(f.name)
+        return p.returncode, (p.stdout + p.stderr).decode()
+
+    rc, out = run_lock("\n".join(pins) + "\n")
+    if rc != 0:
+        fails.append("pristine lock does not pass check_env: " + out[-300:])
+    for pin in pins:
+        name = pin.split("==")[0]
+        mutated = [pin.split("==")[0] + "==0.0.0+mutated" if q == pin else q for q in pins]
+        rc, out = run_lock("\n".join(mutated) + "\n")
+        if rc == 0 or name not in out:
+            fails.append(f"mutated pin for {name} was not rejected (exit {rc})")
+    rc, out = run_lock("\n".join(pins + ["p10-nonexistent-package==1.0"]) + "\n")
+    if rc == 0:
+        fails.append("missing package was not rejected")
+    rc, out = run_lock("\n".join(pins + ["six>=1.0"]) + "\n")
+    if rc == 0:
+        fails.append("unpinned lock line was not rejected")
+    rc, out = run_lock("")
+    if rc == 0:
+        fails.append("empty lock was not rejected")
+    v = open(os.path.join(HERE, "verify.sh")).read()
+    if "scripts/check_env.py requirements.lock" not in v or '!= "cryptography"' in v or "pkg !=" in v:
+        fails.append("verify.sh does not delegate to check_env.py or contains a per-package exemption")
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep", action="store_true")
@@ -419,6 +462,16 @@ def main():
     else:
         ok += 1
         print("[PASS] differential-decoder: Python and Lean decoders induce the same partition on 14 vectors")
+
+    e_fails = env_pin_regression()
+    total += 1
+    if e_fails:
+        failures.append(("env-pin-regression", 0, "; ".join(e_fails)))
+        print("[FAIL] env-pin-regression:", e_fails)
+    else:
+        ok += 1
+        print("[PASS] env-pin-regression: every pinned Python dependency (incl. cryptography) is enforced; "
+              "mutated/missing/unpinned locks are rejected; verify.sh has no exemption")
 
     print(f"\nmutation suite: {ok}/{total} as expected in {time.time() - t0:.0f}s")
     for cid, rc, out in failures:

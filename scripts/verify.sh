@@ -17,17 +17,8 @@ die()  { printf 'VERIFY FAIL: %s\n' "$*" >&2; exit 1; }
 require() { command -v "$1" >/dev/null 2>&1 || die "required tool missing: $1"; }
 for t in lean lake python3 sha256sum grep sort find; do require "$t"; done
 
-step "python module pins"
-python3 - <<'PY' || die "python module pins differ from requirements.lock"
-import re, sys
-from importlib import metadata
-want = dict(l.strip().split("==") for l in open("requirements.lock") if "==" in l)
-for pkg in ("pycose", "cbor2", "cryptography"):
-    have = metadata.version(pkg)
-    if want.get(pkg) != have and pkg != "cryptography":
-        sys.exit(f"{pkg}: have {have}, pinned {want.get(pkg)}")
-    print(f"  {pkg} {have}" + (f" (pinned {want.get(pkg)})" if want.get(pkg) else ""))
-PY
+step "python environment: every package pinned in requirements.lock must match exactly"
+python3 scripts/check_env.py requirements.lock || die "python environment differs from requirements.lock"
 
 check_sums() {
   # verifies every listed file AND that no unlisted file exists (source tree contamination)
