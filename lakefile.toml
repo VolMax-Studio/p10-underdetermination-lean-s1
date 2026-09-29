@@ -1,0 +1,9 @@
+name = "p10-underdetermination-lean-s1"
+version = "0.1.0"
+defaultTargets = ["P10"]
+
+[leanOptions]
+autoImplicit = false
+
+[[lean_lib]]
+name = "P10"

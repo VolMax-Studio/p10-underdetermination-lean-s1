@@ -1,0 +1,40 @@
+name: verify
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages (Lean runtime libs)
+        run: sudo apt-get update && sudo apt-get install -y curl unzip python3-venv libgmp10 libuv1t64
+      - name: Python environment (pinned)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --require-virtualenv -r requirements.lock
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Pinned Lean toolchain (package digest checked; no elan, no lake update)
+        run: |
+          .venv/bin/python --version
+          eval "$(scripts/install_toolchain.sh)"
+          echo "$PWD/.toolchain/lean4-4.33.0/bin" >> "$GITHUB_PATH"
+      - name: Canonical verification (fail-closed, includes mutation suite)
+        run: ./scripts/verify.sh
+      - name: Artifact hashes
+        if: always()
+        run: |
+          sha256sum SHA256SUMS manifest/VerifierManifestS1.json vectors/out/p1.statement.json vectors/out/p1.cose \
+            vectors/p1.instance.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p10-s1-test-vector
+          path: |
+            SHA256SUMS
+            manifest/VerifierManifestS1.json
+            vectors/out/
