@@ -1,6 +1,6 @@
 # p10-underdetermination-lean-s1
 
-**Status: DRAFT. Self-reviewed. Not independently validated. Not ratified. No release, no tag.**
+**Frozen release:** `v0.1.0-s1-ratified` (human-signed annotated tag) → commit `e4db3747eaeeb1a07227bb9029f9a9c3b566cdb1`; tag object `7c3df437de454466b932a5d0dc889b3287c64e05`; verifier manifest SHA-256 `06bf9129bf480c79ed5281ec2e944ac5613d1c340552ce5a415f5bf4c8965907`. **State: RATIFIED / FROZEN S1.** Not independently validated. Later `main` commits are outside the frozen snapshot unless separately ratified.
 
 Executable reference chain for the ratified **P10 Underdetermination Profile** (v0.1.1, normative source:
 `VolMax-Studio/p10-underdetermination-profile` @ `3c20df23…`, file SHA-256
@@ -49,8 +49,9 @@ the profile's `CertificateTargetV0(π,e,c,w₀,w₁)` holds in the frozen S1 toy
   content; P10/Lean checks underdetermination, a Transparency Service would merely register the Signed Statement.
 * The COSE signature uses a public deterministic **test key** with no authority — never a human/issuer key.
 * Wire codec is a strict *subset* of JCS; §2.7 conformance for general worlds is not demonstrated.
-* "Third-party reproducible verification" is the claim; **"independently validated semantics" is not** — no outside
-  party has reviewed the profile→Lean mapping (`profile/IMPLEMENTATION_BINDING.md`) or the checker.
+* "Third-party reproducible verification" is the claim; **"independently validated semantics" is not** — no independent
+  external human or organization has validated the profile→Lean mapping (`profile/IMPLEMENTATION_BINDING.md`) or the checker.
+  The recorded adversarial model gate (`SURVIVES-REVIEW`) is review evidence, but is not counted as independent external validation.
 * Novelty of the same-evidence countermodel criterion is not claimed (`RELATED_WORK.md`).
 
 ## Normative vs implementation boundary
@@ -90,8 +91,11 @@ P10_EXPECT_MANIFEST_SHA256=<manifest digest obtained OUT OF BAND> ./scripts/veri
 `P10_EXPECT_MANIFEST_SHA256` (or `--manifest-digest` for `p10tool.py verify`) verification HALTs with no verdict. A tree cannot
 vouch for itself: an adversary who controls the whole tree can rewrite the manifest, the in-tree pin file, the statement
 and re-sign with the public TEST key, and the result is self-consistent. `P10_ALLOW_INTREE_PIN=1 ./scripts/verify.sh` reads
-`profile/VERIFIER_MANIFEST_PIN.txt` and prints a warning: it proves self-consistency only. Anchoring the pin externally
-(profile `InstanceCommitment`, registration) is S2/S3 work and is NOT demonstrated here.
+`profile/VERIFIER_MANIFEST_PIN.txt` and prints a warning: it proves self-consistency only. Protocol-level anchoring of the pin
+(profile `InstanceCommitment`, registration/transparency) is S2/S3 work and is NOT demonstrated here. For the frozen S1 release,
+the human-signed annotated tag `v0.1.0-s1-ratified` publishes the ratified manifest digest and binds it to commit
+`e4db3747eaeeb1a07227bb9029f9a9c3b566cdb1`; consumers must verify the tag signature and trust the ratifier public key
+before treating that digest as an external-to-tree pin. This signed tag is not a SCITT/transparency anchor.
 `P10_SKIP_MUTATIONS=1` skips the mutation suite (faster, not canonical).
 `verify.sh` checks that EVERY package pinned in `requirements.lock` is installed at exactly the pinned version
 (`scripts/check_env.py`, no exemptions; regression-tested in the mutation suite). It never runs `lake update` and never uses the network. It also: checks `SHA256SUMS` and the exact file set before
@@ -105,7 +109,7 @@ exact-type check of the checked theorem), runs the mutation suite, and prints ar
 
 ```
 axiom audit: 54/54 declarations axiom-free
-run_tests: 23 passed, 0 failed
+run_tests: 26 passed, 0 failed
 VERDICT: PASS
 mutation suite: all cases as expected (see script output for the count)
 VERIFY PASS
@@ -135,6 +139,6 @@ seconds; no `native_decide` was needed.
 
 Toy profile; wire codec subset; per-vector (not universal) canonical-form *uniqueness on the accept side* (universal
 `decode ∘ encode = id` is proved); SHA-256 not proved correct in Lean; profile-digest and source-digest bindings are
-external (hashing script in TCB); Lean 4.33.0 rather than the profile kernel's 4.34.0; no independent review. CI actions are pinned to the commit SHAs that the `v4` tags resolved to in CI run #2
+external (hashing script in TCB); Lean 4.33.0 rather than the profile kernel's 4.34.0; no independent external human/organizational semantic validation. The adversarial model gate verdict was `SURVIVES-REVIEW`. CI actions are pinned to the commit SHAs that the `v4` tags resolved to in CI run #2
 (`actions/checkout` 11d5960a…, `actions/upload-artifact` ea165f8d…; read from that run's log, not re-checked against the
 action repositories).
