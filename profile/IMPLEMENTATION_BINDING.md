@@ -6,8 +6,10 @@
 **Normative profile SHA-256** (computed from the file, `sha256sum`):
 `b92c0d689b9f16f2184ba2addb8653ed881595cc3a0117c62cadadf5c6dc6558`
 
-**Implementation status:** self-reviewed / **not independently validated** / not ratified. No human
-ratification, tag or release exists for this repository.
+**Implementation status:** human-ratified / **not independently validated**. Frozen release: signed tag
+`v0.1.0-s1-ratified` → commit `e4db3747eaeeb1a07227bb9029f9a9c3b566cdb1` (tag object
+`7c3df437de454466b932a5d0dc889b3287c64e05`). Human ratification accepts this exact implementation snapshot;
+it does not constitute independent external validation of the profile→Lean mapping.
 
 ## Authority
 
